@@ -330,6 +330,8 @@ main{padding:48px 56px 90px;max-width:1220px}
 .fab-menu{border:1px solid var(--line);border-radius:12px;box-shadow:0 20px 50px -24px rgba(0,0,0,.3);padding:6px}
 .fab-menu button:hover{background:var(--soft)}
 .mtop{display:none}
+.mtable.ctab{table-layout:fixed;width:100%}.mtable.ctab th.cw1{width:38%}.mtable.ctab th.cw2{width:18%}.mtable.ctab th.cw3{width:14%}.mtable.ctab th.cw4{width:20%}.mtable.ctab td{overflow:hidden;text-overflow:ellipsis}
+@media(max-width:760px){.mtable.ctab th.cw2,.mtable.ctab td.cw2,.mtable.ctab th.cw5,.mtable.ctab td.cw5,.mtable.ctab th.cw3,.mtable.ctab td.cw3{display:none}.mtable.ctab th.cw1{width:50%}.mtable.ctab td{white-space:normal}.mtable.ctab td.cw4{white-space:nowrap}}
 .mtable.fixed thead{display:none}.mtable.fixed td:nth-child(2){color:var(--muted)}
 @media (max-width:900px){
   .mtop{display:flex;padding:18px 16px 4px;background:#fff}.mtop .brand b{font-size:22px}
@@ -395,7 +397,7 @@ main{padding:48px 56px 90px;max-width:1220px}
 </div>
 
 <button id="fab" class="fab hidden" aria-label="הוספה">+</button>
-<div id="fabMenu" class="fab-menu hidden"><button data-add="task">משימה</button><button data-add="staff">איש צוות / מועמד</button><button data-add="supp">ספק</button><button data-add="meet">פגישה</button></div>
+<div id="fabMenu" class="fab-menu hidden"><button data-add="task">משימה</button><button data-add="staff">איש צוות / מועמד</button><button data-add="lead">ליד / לקוח</button><button data-add="supp">ספק</button><button data-add="meet">פגישה</button></div>
 <div id="overlay" class="overlay hidden"><div class="modal" id="modal"></div></div>
 <div class="toast" id="toast"></div>
 
@@ -443,16 +445,18 @@ $('#authForm').onsubmit=async e=>{
 $('#signOut').onclick=$('#pendingOut').onclick=async()=>{await sb.auth.signOut();show('auth')};
 
 /* ---------- DATA ---------- */
+async function fetchAll(table){let out=[],i=0;for(;;){const {data,error}=await sb.from(table).select('*').range(i,i+999);if(error||!data)break;out=out.concat(data);if(data.length<1000)break;i+=1000}return out}
 async function loadAll(){
-  const [p,d,t,m,st,su]=await Promise.all([
+  const [p,d,t,m,st,su,co]=await Promise.all([
     sb.from('profiles').select('*').order('full_name'),
     sb.from('departments').select('*').order('sort_order'),
     sb.from('tasks').select('*').order('due_date',{ascending:true,nullsFirst:false}),
     isMgr()?sb.from('meetings').select('*').order('meeting_date',{ascending:false}):Promise.resolve({data:[]}),
     isMgr()?sb.from('staff').select('*').order('full_name'):Promise.resolve({data:[]}),
-    isMgr()?sb.from('suppliers').select('*').order('name'):Promise.resolve({data:[]})
+    isMgr()?sb.from('suppliers').select('*').order('name'):Promise.resolve({data:[]}),
+    isMgr()?fetchAll('contacts'):Promise.resolve([])
   ]);
-  S.profiles=p.data||[];S.depts=d.data||[];S.tasks=t.data||[];S.meetings=m.data||[];S.staff=st.data||[];S.suppliers=su.data||[];
+  S.profiles=p.data||[];S.depts=d.data||[];S.tasks=t.data||[];S.meetings=m.data||[];S.staff=st.data||[];S.suppliers=su.data||[];S.contacts=co||[];
 }
 async function boot(){
   const {data:{session}}=await sb.auth.getSession();
@@ -474,7 +478,7 @@ async function boot(){
 function navItems(){
   const mine=S.tasks.filter(t=>t.assignee_id===S.me.id&&t.status!=='done').length;
   const it=[['today','היום'],['tasks','משימות',mine]];
-  if(isMgr())it.push(['people','אנשי קשר'],['meetings','פגישות']);
+  if(isMgr())it.push(['clients','לקוחות ולידים'],['people','אנשי קשר'],['meetings','פגישות']);
   return it;
 }
 function renderNav(){
@@ -485,7 +489,7 @@ function renderNav(){
 }
 function render(){
   renderNav();
-  const v={today:viewToday,dash:viewToday,mine:viewTasksHub,tasks:viewTasksHub,people:viewPeople,staff:viewPeople,suppliers:viewPeople,meetings:viewMeetings,team:viewTeam}[S.view]||viewToday;
+  const v={today:viewToday,dash:viewToday,mine:viewTasksHub,tasks:viewTasksHub,clients:viewClients,people:viewPeople,staff:viewPeople,suppliers:viewPeople,meetings:viewMeetings,team:viewTeam}[S.view]||viewToday;
   $('#main').innerHTML='';v();window.scrollTo(0,0);
 }
 
@@ -600,6 +604,7 @@ function gSearch(q){
   const T=S.tasks.filter(t=>has(t.title,t.description)).slice(0,6);if(T.length)g.push(['משימות',T.map(t=>`<div class="gi" data-gt="${t.id}"><span>${esc(t.title)}</span><small>${STATUS[t.status]}</small></div>`)]);
   const P=S.staff.filter(r=>has(r.full_name,r.phone,r.email,r.city,r.role_title,r.category)).slice(0,6);if(P.length)g.push(['כוח אדם',P.map(r=>`<div class="gi" data-gs="${r.id}"><span>${esc(r.full_name)}</span><small>${esc([r.category,r.stage].filter(Boolean).join(' · '))}</small></div>`)]);
   const U=S.suppliers.filter(r=>has(r.name,r.service,r.contact_name,r.phone,r.email,r.category)).slice(0,6);if(U.length)g.push(['ספקים',U.map(r=>`<div class="gi" data-gu="${r.id}"><span>${esc(r.name)}</span><small>${esc(r.category||'')}</small></div>`)]);
+  const C2=(S.contacts||[]).filter(r=>has(r.name,r.company,r.phone,r.email)).slice(0,8);if(C2.length)g.push(['לקוחות ולידים',C2.map(r=>`<div class="gi" data-gc="${r.id}"><span>${esc(r.name)}</span><small>${esc(r.kind==='לקוח'?'לקוח · '+(r.segment||''):'ליד · '+(r.stage||''))}</small></div>`)]);
   const M=S.meetings.filter(m=>has(m.title,m.agenda,m.notes)).slice(0,4);if(M.length)g.push(['פגישות',M.map(m=>`<div class="gi" data-gm="${m.id}"><span>${esc(m.title)}</span><small>${fmtD(m.meeting_date)}</small></div>`)]);
   return g.map(([h,a])=>`<h4>${h}</h4>${a.join('')}`).join('')||'<div class="empty" style="padding:12px">לא נמצאו תוצאות</div>';
 }
@@ -608,7 +613,7 @@ function bindSearch(box){
   const close=()=>{res.classList.add('hidden')};
   inp.oninput=()=>{const h=gSearch(inp.value);res.innerHTML=h;res.classList.toggle('hidden',!h)};
   res.onclick=e=>{const x=e.target.closest('.gi');if(!x)return;close();
-    if(x.dataset.gt)openTask(x.dataset.gt);else if(x.dataset.gs)openRecord(STAFF,x.dataset.gs);else if(x.dataset.gu)openRecord(SUPP,x.dataset.gu);else if(x.dataset.gm){S.meetingId=x.dataset.gm;S.view='meetings';render()}};
+    if(x.dataset.gt)openTask(x.dataset.gt);else if(x.dataset.gs)openRecord(STAFF,x.dataset.gs);else if(x.dataset.gu)openRecord(SUPP,x.dataset.gu);else if(x.dataset.gc)openRecord(CONT,x.dataset.gc);else if(x.dataset.gm){S.meetingId=x.dataset.gm;S.view='meetings';render()}};
   document.addEventListener('click',e=>{if(!box.contains(e.target))close()},{once:false});
 }
 function viewToday(){
@@ -655,7 +660,7 @@ function viewToday(){
 }
 $('#fab').onclick=e=>{e.stopPropagation();$('#fabMenu').classList.toggle('hidden')};
 document.addEventListener('click',e=>{if(!e.target.closest('#fabMenu'))$('#fabMenu').classList.add('hidden')});
-$('#fabMenu').querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{$('#fabMenu').classList.add('hidden');const a=b.dataset.add;if(a==='task')openTask(null,{assignee_id:S.me.id});else if(a==='staff')openRecord(STAFF,null);else if(a==='supp')openRecord(SUPP,null);else newMeeting()});
+$('#fabMenu').querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{$('#fabMenu').classList.add('hidden');const a=b.dataset.add;if(a==='task')openTask(null,{assignee_id:S.me.id});else if(a==='staff')openRecord(STAFF,null);else if(a==='supp')openRecord(SUPP,null);else if(a==='lead')openRecord(CONT,null,{kind:'ליד',stage:'חדש'});else newMeeting()});
 
 /* ---------- TASK MODAL ---------- */
 async function openTask(id,preset={}){
@@ -815,6 +820,56 @@ const SUPP={key:'suppliers',table:'suppliers',title:'ספקים',sub:'מי שנ�
   cols:[['name','שם',r=>`<b>${esc(r.name)}</b>${r.relationship_status==='עבדנו בעבר'?'<small class="nm-sub">עבדנו בעבר</small>':''}`,'sw1'],['service','מה נותן',r=>`<span class="clip">${esc(r.service||'')}</span>`,'sw2'],
     ['phone','טלפון',r=>r.phone?`<a class="sw3" href="tel:${esc(r.phone.split(/[;,]/)[0].replace(/[^+\d]/g,''))}" dir="ltr" onclick="event.stopPropagation()">${esc(r.phone.split(/[;,]/)[0])}</a>`:''],['email','אימייל',r=>r.email?`<a href="mailto:${esc(r.email.split(/[;, ]/)[0])}" dir="ltr" onclick="event.stopPropagation()">${esc(r.email.split(/[;, ]/)[0])}</a>`:'']],
   fields:[['name','שם'],['category','קטגוריה',SUPP_CATS],['service','מה נותן לנו'],['relationship_status','סטטוס',['פעיל','עבדנו בעבר','לא סגור']],['contact_name','איש קשר'],['phone','טלפון'],['email','אימייל'],['website','אתר'],['terms_note','מחיר ותנאים','area'],['notes','הערות','area']]};
+const CSEG=['לקוח פרטי','ברוקר','חברת צ׳ארטר','ניהול יאכטות','קפטן / צוות / בעל יאכטה','וילה / מלון / קונסיירז׳','סוכנות / DMC','שותף / פלטפורמה','אחר'];
+const CSTG={'בשיחה':'#5B6B4E','ענו בעבר':'#3B6286','פנייה נשלחה':'#A87414','חדש':'#7A6AA8','קר':'#9a948a','לא לפנות':'#B5473A'};
+const CSTG_ORDER=Object.keys(CSTG);
+const CONT={key:'contacts',table:'contacts',title:'לקוחות ולידים',name:'name',statusField:'stage',
+  fields:[['name','שם'],['kind','לקוח / ליד',['לקוח','ליד']],['stage','שלב (לליד)',CSTG_ORDER],['segment','סוג',CSEG],['company','חברה / יאכטה'],['priority','עדיפות',['A','B','C','D']],
+    ['phone','טלפון'],['email','אימייל'],['last_contact','קשר אחרון (YYYY-MM-DD)'],['next_step','צעד הבא'],['next_step_date','תאריך לצעד הבא (YYYY-MM-DD)'],['deal_value','שווי עסקה (€)'],
+    ['do_not_contact','לא לפנות','bool'],['source','מקור המידע'],['notes','היסטוריה והערות','area']]};
+S.ctab=S.ctab||'client';S.cq='';S.cseg='';S.cmore={};
+const firstPhone=p=>(p||'').split(/[;,]/)[0].trim();
+const fmtShort=d=>{if(!d)return '';const x=new Date(d);return isNaN(x)?esc(d):x.toLocaleDateString('he-IL',{day:'numeric',month:'numeric',year:'2-digit'})};
+function viewClients(){
+  const all=S.contacts||[];const cl=all.filter(r=>r.kind==='לקוח'),ld=all.filter(r=>r.kind!=='לקוח');
+  const isC=S.ctab==='client';const rows=isC?cl:ld;
+  header('לקוחות ולידים',isC?'מי שעבד איתנו בפועל: הזמין, שילם או עבדנו יחד':'כל מי שפנינו אליו או פנה אלינו ועוד לא סגרנו איתו',`<button class="btn" id="newC">+ ${isC?'לקוח':'ליד'}</button>`);
+  seg([['client',`לקוחות · ${cl.length}`],['lead',`לידים · ${ld.length}`]],S.ctab,k=>{S.ctab=k;S.cseg='';S.cmore={};render()});
+  const f=document.createElement('div');f.className='filters';
+  const segs=CSEG.filter(x=>rows.some(r=>r.segment===x));
+  f.innerHTML=`<input id="cq" placeholder="חיפוש שם, טלפון, אימייל..." value="${esc(S.cq)}"><select id="cseg"><option value="">כל הסוגים</option>${segs.map(x=>`<option ${S.cseg===x?'selected':''}>${esc(x)}</option>`).join('')}</select>`;
+  $('#main').appendChild(f);
+  const box=document.createElement('div');$('#main').appendChild(box);
+  const phoneCell=r=>{const p=firstPhone(r.phone);if(!p)return '';const d=p.replace(/[^\d]/g,'');return `<a href="tel:+${d}" dir="ltr" onclick="event.stopPropagation()">${esc(p)}</a> <a class="wa" href="https://wa.me/${d}" target="_blank" rel="noopener" title="וואטסאפ" onclick="event.stopPropagation()">💬</a>`};
+  const mailCell=r=>{const e=(r.email||'').split(/[;, ]/).filter(Boolean)[0];return e?`<a href="mailto:${esc(e)}" dir="ltr" onclick="event.stopPropagation()">${esc(e)}</a>`:''};
+  const nameCell=r=>{const sub=isC?[r.company].filter(Boolean).join(' · '):[r.segment!=='אחר'?r.segment:'',r.company].filter(Boolean).join(' · ');return `<b>${esc(r.name)}</b>${r.do_not_contact&&r.kind==='לקוח'?' <span class="chip late">לא לפנות</span>':''}${sub?`<small class="nm-sub">${esc(sub)}</small>`:''}`};
+  const cols=isC?[['שם',nameCell,'cw1'],['קשר אחרון',r=>fmtShort(r.last_contact),'cw3'],['טלפון',phoneCell,'cw4'],['אימייל',mailCell,'cw5']]
+                :[['שם',nameCell,'cw1'],['שלב',r=>isel(r,'stage',CSTG),'cw2'],['קשר אחרון',r=>fmtShort(r.last_contact),'cw3'],['טלפון',phoneCell,'cw4']];
+  const collapsedDef=isC?[]:['קר','לא לפנות'];
+  const draw=()=>{
+    const q=S.cq.trim().toLowerCase();
+    const arr=rows.filter(r=>(!S.cseg||r.segment===S.cseg)&&(!q||[r.name,r.company,r.phone,r.email,r.notes].join(' ').toLowerCase().includes(q)));
+    const gOf=r=>isC?(r.segment||'אחר'):(r.stage||'חדש');
+    const order=isC?CSEG:CSTG_ORDER;
+    const by={};arr.forEach(r=>(by[gOf(r)]=by[gOf(r)]||[]).push(r));
+    const keys=Object.keys(by).sort((a,b)=>(order.indexOf(a)+1||99)-(order.indexOf(b)+1||99));
+    box.innerHTML=keys.length?keys.map(g=>{const ck='c'+S.ctab+g,cl2=S.collapsed[ck]??(!q&&!S.cseg&&collapsedDef.includes(g));
+      const list=by[g].sort((a,b)=>(b.last_contact||'').localeCompare(a.last_contact||'')||(a.priority||'Z').localeCompare(b.priority||'Z'));
+      const lim=S.cmore[ck]?list.length:150;
+      return `<div class="mgroup"><div class="mg-head" data-ck="${esc(ck)}" data-cl="${cl2?1:0}"><span class="caret">${cl2?'◀':'▼'}</span>${esc(g)}<span class="mg-count">${list.length}</span></div>
+      ${cl2?'':`<div class="mtable-wrap"><table class="mtable ctab"><thead><tr>${cols.map(c=>`<th class="${c[2]}">${c[0]}</th>`).join('')}</tr></thead><tbody>${list.slice(0,lim).map(r=>`<tr data-cid="${r.id}">${cols.map(c=>`<td class="${c[2]}">${c[1](r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${list.length>lim?`<button class="more" data-more="${esc(ck)}">הצג את כל ${list.length}</button>`:''}`}</div>`}).join(''):'<div class="empty">לא נמצאו תוצאות</div>';
+    box.querySelectorAll('[data-cid]').forEach(el=>el.onclick=e=>{if(e.target.closest('select,a'))return;openRecord(CONT,el.dataset.cid)});
+    box.querySelectorAll('.mg-head').forEach(h=>h.onclick=()=>{S.collapsed[h.dataset.ck]=h.dataset.cl!=='1';draw()});
+    box.querySelectorAll('[data-more]').forEach(b=>b.onclick=()=>{S.cmore[b.dataset.more]=1;draw()});
+    box.querySelectorAll('.isel').forEach(s=>{s.onclick=e=>e.stopPropagation();s.onchange=async()=>{
+      const {data,error}=await sb.from('contacts').update({stage:s.value||null}).eq('id',s.dataset.iid).select().single();
+      if(error)return toast('שגיאה: '+error.message);Object.assign(S.contacts.find(x=>x.id===data.id),data);toast('עודכן');draw()}});
+  };
+  draw();
+  f.querySelector('#cq').oninput=e=>{S.cq=e.target.value;draw()};
+  f.querySelector('#cseg').onchange=e=>{S.cseg=e.target.value;draw()};
+  $('#newC').onclick=()=>openRecord(CONT,null,isC?{kind:'לקוח'}:{kind:'ליד',stage:'חדש'});
+}
 S.collapsed=S.collapsed||{};S.tab=S.tab||{};S.fc='';S.fr='';
 function viewRecords(C){
   const all=S[C.key];
@@ -865,8 +920,8 @@ function viewRecords(C){
   [['rs','st2'],['fc','fc'],['fr','fr'],['rb','f2']].forEach(([id,k])=>{const el=f.querySelector('#'+id);if(el)el.onchange=e=>{S[k]=e.target.value;draw()}});
   $('#newR').onclick=()=>openRecord(C,null);
 }
-function openRecord(C,id){
-  const r=id?S[C.key].find(x=>x.id===id):{};
+function openRecord(C,id,preset){
+  const r=id?S[C.key].find(x=>x.id===id):(preset||{});
   const m=$('#modal');
   m.innerHTML=`<h2>${id?esc(r[C.name]):'רשומה חדשה'}</h2><div class="row2">${C.fields.map(([k,l,t])=>`<div class="field" style="${t==='area'||k===C.name?'grid-column:1/-1':''}"><label>${l}</label>${t==='bool'?`<select data-k="${k}" data-bool="1"><option value="false" ${!r[k]?'selected':''}>לא</option><option value="true" ${r[k]?'selected':''}>כן</option></select>`:Array.isArray(t)?`<select data-k="${k}"><option value=""></option>${t.map(o=>`<option ${r[k]===o?'selected':''}>${o}</option>`).join('')}${r[k]&&!t.includes(r[k])?`<option selected>${esc(r[k])}</option>`:''}</select>`:t==='area'?`<textarea data-k="${k}">${esc(r[k]||'')}</textarea>`:`<input data-k="${k}" value="${esc(r[k]||'')}" ${['email','phone','website'].includes(k)?'dir="ltr"':''}>`}</div>`).join('')}</div>
   <div class="actions"><div style="display:flex;gap:8px"><button class="btn" id="rSave">שמירה</button><button class="btn ghost" id="rCancel">ביטול</button></div>${id&&isCeo()?'<button class="btn small danger" id="rDel">מחיקה</button>':''}</div>`;
@@ -875,7 +930,8 @@ function openRecord(C,id){
   $('#rSave').onclick=async()=>{
     const row={};m.querySelectorAll('[data-k]').forEach(el=>row[el.dataset.k]=el.dataset.bool?el.value==='true':(el.value.trim()||null));
     if(!row[C.name]){m.querySelector(`[data-k="${C.name}"]`).focus();return}
-    if(!row[C.statusField])row[C.statusField]=C.key==='staff'?'מועמד חדש':'פעיל';if(C.key==='staff'&&!row.status)row.status='—';
+    if(C.key==='contacts'){if(!row.kind)row.kind='ליד';if(row.kind==='ליד'&&!row.stage)row.stage='חדש';if(row.deal_value)row.deal_value=Number(String(row.deal_value).replace(/[^\d.]/g,''))||null}
+    else if(!row[C.statusField])row[C.statusField]=C.key==='staff'?'מועמד חדש':'פעיל';if(C.key==='staff'&&!row.status)row.status='—';
     const res=id?await sb.from(C.table).update(row).eq('id',id).select().single():await sb.from(C.table).insert(row).select().single();
     if(res.error)return toast('שגיאה: '+res.error.message);
     const i=S[C.key].findIndex(x=>x.id===res.data.id);if(i>=0)S[C.key][i]=res.data;else S[C.key].push(res.data);
