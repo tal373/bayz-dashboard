@@ -352,6 +352,14 @@ main{padding:48px 56px 90px;max-width:1220px}
   .mtable th,.mtable td{padding:11px 10px}
 }
 @media(max-width:760px){.seg button{white-space:nowrap;padding:8px 11px;font-size:13.5px}}
+/* round 3 */
+.gs-mini{margin:-6px 0 14px}.gs-mini input{padding:10px 46px 10px 16px;font-size:14px}
+.cx-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.cx-stats div{background:var(--soft);border-radius:10px;padding:10px 12px}.cx-stats b{display:block;font-size:18px}.cx-stats span{font-size:12px;color:var(--muted)}
+.cx-fu{font-size:13px;color:var(--muted);margin:4px 0 8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.stale{color:#B5473A;font-weight:600}
+.dp{margin-top:12px}.dp-row{display:grid;grid-template-columns:1fr 56px 84px 80px 22px;gap:6px;align-items:center;margin-bottom:6px;font-size:14px}.dp-row input{min-width:0}
+.dp select[multiple]{min-height:96px}
+@media(max-width:760px){.dp-row{grid-template-columns:1fr 46px 70px 22px}.dp-row span{display:none}}
 /* contact extras */
 .cx{margin-top:14px;display:flex;flex-direction:column;gap:12px}.cx-co{align-self:flex-start}
 .cx-sec{border-top:1px solid var(--line);padding-top:10px}.cx-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
@@ -477,6 +485,7 @@ async function loadAll(){
   S.profiles=p.data||[];S.depts=d.data||[];S.tasks=t.data||[];S.meetings=m.data||[];S.staff=st.data||[];S.suppliers=su.data||[];S.contacts=co||[];
   const [tr,sq,en,ar,ms,dl]=await Promise.all([fetchAll('treatments'),Promise.resolve({data:[]}),Promise.resolve([]),isMgr()?sb.from('archive_items').select('*').order('created_at'):Promise.resolve({data:[]}),isMgr()?Promise.resolve({data:null}):sb.from('staff').select('id,full_name,profile_id').eq('profile_id',S.me.id).maybeSingle(),isMgr()?fetchAll('deals'):Promise.resolve([])]);
   S.deals=dl||[];
+  if(isMgr()){const [pr,dc]=await Promise.all([sb.from('price_items').select('*').order('sort'),sb.from('documents').select('*').order('created_at')]);S.prices=pr.data||[];S.docs=dc.data||[]}else{S.prices=[];S.docs=[]}
   S.treatments=tr||[];S.sequences=sq.data||[];S.enrollments=en||[];S.archive=ar.data||[];S.myStaff=ms.data||null;
 }
 async function boot(){
@@ -499,7 +508,7 @@ async function boot(){
 function navItems(){
   const mine=S.tasks.filter(t=>t.assignee_id===S.me.id&&t.status!=='done').length;
   const it=[['today','היום'],['tasks','משימות',mine]];
-  if(isMgr())it.push(['clients','לקוחות ולידים'],['deals','עסקאות'],['people','אנשי קשר'],['treat','טיפולים'],['meetings','פגישות'],['archive','ארכיון']);
+  if(isMgr())it.push(['clients','לקוחות ולידים'],['deals','עסקאות'],['season','לוח עונה'],['people','אנשי קשר'],['prices','מחירון'],['treat','טיפולים'],['meetings','פגישות'],['archive','ארכיון']);
   else it.push(['treat','הטיפולים שלי']);
   return it;
 }
@@ -511,8 +520,10 @@ function renderNav(){
 }
 function render(){
   renderNav();
-  const v={today:viewToday,dash:viewToday,mine:viewTasksHub,tasks:viewTasksHub,clients:viewClients,people:viewPeople,staff:viewPeople,suppliers:viewPeople,meetings:viewMeetings,team:viewTeam,treat:viewTreat,archive:viewArchive,deals:viewDeals}[S.view]||viewToday;
-  $('#main').innerHTML='';v();window.scrollTo(0,0);
+  const v={today:viewToday,dash:viewToday,mine:viewTasksHub,tasks:viewTasksHub,clients:viewClients,people:viewPeople,staff:viewPeople,suppliers:viewPeople,meetings:viewMeetings,team:viewTeam,treat:viewTreat,archive:viewArchive,deals:viewDeals,prices:viewPrices,season:viewSeason}[S.view]||viewToday;
+  $('#main').innerHTML='';v();
+  if(isMgr()&&!['today','dash'].includes(S.view)&&!S.meetingId){const top=$('#main .top');if(top){const b=document.createElement('div');b.className='gsearch gs-mini';b.innerHTML='<input placeholder="חיפוש בכל המערכת..." autocomplete="off"><div class="gres hidden"></div>';top.after(b);bindSearch(b)}}
+  window.scrollTo(0,0);
 }
 
 /* ---------- TASK ROW / CARD ---------- */
@@ -627,6 +638,7 @@ function gSearch(q){
   const P=S.staff.filter(r=>has(r.full_name,r.phone,r.email,r.city,r.role_title,r.category)).slice(0,6);if(P.length)g.push(['כוח אדם',P.map(r=>`<div class="gi" data-gs="${r.id}"><span>${esc(r.full_name)}</span><small>${esc([r.category,r.stage].filter(Boolean).join(' · '))}</small></div>`)]);
   const U=S.suppliers.filter(r=>has(r.name,r.service,r.contact_name,r.phone,r.email,r.category)).slice(0,6);if(U.length)g.push(['ספקים',U.map(r=>`<div class="gi" data-gu="${r.id}"><span>${esc(r.name)}</span><small>${esc(r.category||'')}</small></div>`)]);
   const C2=(S.contacts||[]).filter(r=>has(r.name,r.company,r.phone,r.email)).slice(0,8);if(C2.length)g.push(['לקוחות ולידים',C2.map(r=>`<div class="gi" data-gc="${r.id}"><span>${esc(r.name)}</span><small>${esc((r.archived?'ארכיון · ':'')+(r.kind==='לקוח'?'לקוח · '+(r.segment||''):'ליד · '+(r.stage||'')))}</small></div>`)]);
+  const D2=(S.deals||[]).filter(d=>has(d.title,d.notes,d.location,cName(d.contact_id))).slice(0,5);if(D2.length)g.push(['עסקאות',D2.map(d=>`<div class="gi" data-gd="${d.id}"><span>${esc(d.title)}</span><small>${esc(d.stage)}</small></div>`)]);
   const M=S.meetings.filter(m=>has(m.title,m.agenda,m.notes)).slice(0,4);if(M.length)g.push(['פגישות',M.map(m=>`<div class="gi" data-gm="${m.id}"><span>${esc(m.title)}</span><small>${fmtD(m.meeting_date)}</small></div>`)]);
   return g.map(([h,a])=>`<h4>${h}</h4>${a.join('')}`).join('')||'<div class="empty" style="padding:12px">לא נמצאו תוצאות</div>';
 }
@@ -635,7 +647,7 @@ function bindSearch(box){
   const close=()=>{res.classList.add('hidden')};
   inp.oninput=()=>{const h=gSearch(inp.value);res.innerHTML=h;res.classList.toggle('hidden',!h)};
   res.onclick=e=>{const x=e.target.closest('.gi');if(!x)return;close();
-    if(x.dataset.gt)openTask(x.dataset.gt);else if(x.dataset.gs)openRecord(STAFF,x.dataset.gs);else if(x.dataset.gu)openRecord(SUPP,x.dataset.gu);else if(x.dataset.gc)openRecord(CONT,x.dataset.gc);else if(x.dataset.gm){S.meetingId=x.dataset.gm;S.view='meetings';render()}};
+    if(x.dataset.gt)openTask(x.dataset.gt);else if(x.dataset.gs)openRecord(STAFF,x.dataset.gs);else if(x.dataset.gu)openRecord(SUPP,x.dataset.gu);else if(x.dataset.gc)openRecord(CONT,x.dataset.gc);else if(x.dataset.gd)openDeal(x.dataset.gd);else if(x.dataset.gm){S.meetingId=x.dataset.gm;S.view='meetings';render()}};
   document.addEventListener('click',e=>{if(!box.contains(e.target))close()},{once:false});
 }
 function viewToday(){
@@ -755,10 +767,10 @@ async function viewMeeting(){
   w.innerHTML=`<div class="grid" style="gap:14px">
     <div class="panel"><h2>פרטי הפגישה</h2>
       <div class="row2" style="display:grid;grid-template-columns:2fr 1fr;gap:10px"><div class="field"><label>כותרת</label><input id="mTitle" value="${esc(m.title)}"></div><div class="field"><label>תאריך</label><input id="mDate" type="date" value="${m.meeting_date}"></div></div>
-      <div class="field"><label>סדר יום</label><textarea id="mAgenda" placeholder="נושאים לפגישה...">${esc(m.agenda||'')}</textarea></div>
+      <div class="field"><label>סדר יום <button class="mini" id="mAuto" type="button">בנה סדר יום אוטומטית</button></label><textarea id="mAgenda" placeholder="נושאים לפגישה...">${esc(m.agenda||'')}</textarea></div>
       <div class="field"><label>סיכום</label><textarea id="mNotes" style="min-height:120px">${esc(m.notes||'')}</textarea></div>
       <button class="btn" id="mSave">שמירה</button></div>
-    <div class="panel"><h2>החלטות</h2><div id="decs">${(decs||[]).map(d=>`<div class="decision"><span style="color:var(--gold)">◆</span><div style="flex:1">${esc(d.text)}</div><button class="link" data-deldec="${d.id}" style="color:var(--muted)">✕</button></div>`).join('')||'<div class="empty" style="padding:8px">אין החלטות עדיין</div>'}</div>
+    <div class="panel"><h2>החלטות</h2><div id="decs">${(decs||[]).map(d=>`<div class="decision"><span style="color:var(--gold)">◆</span><div style="flex:1">${esc(d.text)}</div><button class="mini" data-dtask="${esc(d.text)}">← משימה</button><button class="link" data-deldec="${d.id}" style="color:var(--muted)">✕</button></div>`).join('')||'<div class="empty" style="padding:8px">אין החלטות עדיין</div>'}</div>
       <div class="inline" style="margin-top:10px"><input id="decTxt" placeholder="החלטה חדשה..."><button class="btn small" id="decAdd">הוספה</button></div></div>
   </div>
   <div class="panel"><h2>משימות מהפגישה <button class="btn small" id="mTask">+ משימה</button></h2><div class="list">${tasks.map(t=>rowHtml(t)).join('')||'<div class="empty">משימה שנוספת כאן נכנסת אוטומטית לרשימה של האחראי/ת</div>'}</div></div>`;
@@ -768,6 +780,8 @@ async function viewMeeting(){
   $('#decAdd').onclick=async()=>{const text=$('#decTxt').value.trim();if(!text)return;const {error}=await sb.from('meeting_decisions').insert({meeting_id:m.id,text});if(error)return toast('שגיאה: '+error.message);render()};
   w.querySelectorAll('[data-deldec]').forEach(b=>b.onclick=async()=>{await sb.from('meeting_decisions').delete().eq('id',b.dataset.deldec);render()});
   $('#mTask').onclick=()=>openTask(null,{meeting_id:m.id,assignee_id:null});
+  $('#mAuto').onclick=()=>{const a=$('#mAgenda');a.value=(a.value.trim()?a.value.trim()+'\n\n':'')+buildAgenda();a.style.minHeight='220px'};
+  w.querySelectorAll('[data-dtask]').forEach(b=>b.onclick=()=>openTask(null,{meeting_id:m.id,title:b.dataset.dtask,assignee_id:S.me.id}));
   bindRows(w);
 }
 
@@ -846,7 +860,7 @@ const STAFF={key:'staff',table:'staff',title:'כוח אדם',name:'full_name',st
     ['role_title','תפקיד (כמו במאנדיי)',Object.keys(LBL.title1)],['title2','התמחות נוספת',Object.keys(LBL.title2)],['availability','זמינות','area'],['equipment','יש ציוד','bool'],
     ['comments','הערות / HR','area'],['hr_recommendation','המלצת HR','area'],['hr_note','HR Note','area'],['background','רקע','area'],
     ['cv_files','קורות חיים ותמונות (קישור)'],['agreement_files','הסכם (קישור)'],['bayz_cv_url','CV באתר בייז (קישור)'],['source_link','מקור'],['social','רשתות חברתיות'],
-    ['employment_type','סוג העסקה'],['active_period','תקופת עבודה'],['notes','הערות מהמיילים','area'],
+    ['employment_type','סוג העסקה'],['pay_rate_eur','תעריף לטיפול (€)'],['active_period','תקופת עבודה'],['notes','הערות מהמיילים','area'],
     ['status','סטטוס במאנדיי',Object.keys(LBL.status)],['outreach_status','סטטוס פנייה במאנדיי',Object.keys(LBL.outreach)],['group_name','קבוצה במאנדיי'],['boards','מקור המידע']]};
 const SUPP_CATS=["רו״ח ושכר","משפטי","בנק וביטוח","תוכנה ומנויים","רכב","יאכטות וסירות","צעצועי מים","פעילויות","מטפלים","ציוד ספא","לינה ואוכל","עיצוב ודפוס","שיווק ופרסום","תערוכות","עמלות ותיווך","נדל״ן","אחר"];
 const SUPP_OPEN='הצעות שלא נסגרו';
@@ -877,11 +891,12 @@ function viewClients(){
   f.innerHTML=`<input id="cq" placeholder="חיפוש שם, טלפון, אימייל..." value="${esc(S.cq)}"><select id="cseg"><option value="">כל הסוגים</option>${segs.map(x=>`<option ${S.cseg===x?'selected':''}>${esc(x)}</option>`).join('')}</select>${isC?'':`<select id="cstg"><option value="">כל השלבים</option>${CSTG_ORDER.map(x=>`<option ${S.cstg===x?'selected':''}>${x}</option>`).join('')}</select>`}`;
   $('#main').appendChild(f);
   const box=document.createElement('div');$('#main').appendChild(box);
-  const phoneCell=r=>{const p=firstPhone(r.phone);if(!p)return '';const d=p.replace(/[^\d]/g,'');return `<a href="tel:+${d}" dir="ltr" onclick="event.stopPropagation()">${esc(p)}</a> <a class="wa" href="https://wa.me/${d}" target="_blank" rel="noopener" title="וואטסאפ" onclick="event.stopPropagation()">💬</a>`};
+  const phoneCell=r=>{const p=firstPhone(r.phone);if(!p)return '';const d=p.replace(/[^\d]/g,'');return `<a href="tel:+${d}" dir="ltr" onclick="event.stopPropagation()">${esc(p)}</a> <a class="wa" href="${esc(waLink(r))}" target="_blank" rel="noopener" title="וואטסאפ עם הודעה מוכנה" onclick="event.stopPropagation()">💬</a>`};
+  const stale=r=>r.kind!=='לקוח'&&['בשיחה','חם','ענו בעבר'].includes(r.stage)&&(!r.last_contact||(today()-parseD(r.last_contact))/864e5>30);
   const mailCell=r=>{const e=(r.email||'').split(/[;, ]/).filter(Boolean)[0];return e?`<a href="mailto:${esc(e)}" dir="ltr" onclick="event.stopPropagation()">${esc(e)}</a>`:''};
   const nameCell=r=>{const sub=isC?[r.company].filter(Boolean).join(' · '):[r.segment!=='אחר'?r.segment:'',r.company].filter(Boolean).join(' · ');return `<b>${esc(r.name)}</b>${r.do_not_contact&&r.kind==='לקוח'?' <span class="chip late">לא לפנות</span>':''}${sub?`<small class="nm-sub">${esc(sub)}</small>`:''}`};
   const cols=isC?[['שם',nameCell,'cw1'],['קשר אחרון',r=>fmtShort(r.last_contact),'cw3'],['טלפון',phoneCell,'cw4'],['אימייל',mailCell,'cw5']]
-                :[['שם',nameCell,'cw1'],['שלב',r=>isel(r,'stage',CSTG),'cw2'],['קשר אחרון',r=>fmtShort(r.last_contact),'cw3'],['טלפון',phoneCell,'cw4'],['',r=>r.archived?`<button class="mini" data-unarc="${r.id}" title="להחזיר לרשימות">החזר</button>`:`<button class="mini" data-mk="${r.id}" title="עבדנו איתו — להעביר ללקוחות">✓ לקוח</button>`,'cw6']];
+                :[['שם',nameCell,'cw1'],['שלב',r=>isel(r,'stage',CSTG),'cw2'],['קשר אחרון',r=>stale(r)?`<span class="stale" title="ליד חם בלי קשר יותר מחודש">${fmtShort(r.last_contact)||'אין'}</span>`:fmtShort(r.last_contact),'cw3'],['טלפון',phoneCell,'cw4'],['',r=>r.archived?`<button class="mini" data-unarc="${r.id}" title="להחזיר לרשימות">החזר</button>`:`<button class="mini" data-mk="${r.id}" title="עבדנו איתו — להעביר ללקוחות">✓ לקוח</button>`,'cw6']];
   const STR=s=>{const i=CSTG_ORDER.indexOf(s);return i<0?9:i};
   const draw=()=>{
     const q=S.cq.trim().toLowerCase();
@@ -914,6 +929,7 @@ function viewClients(){
   f.querySelector('#cq').oninput=e=>{S.cq=e.target.value;draw()};
   f.querySelector('#cseg').onchange=e=>{S.cseg=e.target.value;draw()};
   if(f.querySelector('#cstg'))f.querySelector('#cstg').onchange=e=>{S.cstg=e.target.value;draw()};
+  if(isC){const ins=document.createElement('div');ins.innerHTML=insightsHtml();$('#main').appendChild(ins)}
   if($('#newC'))$('#newC').onclick=()=>openRecord(CONT,null,isC?{kind:'לקוח'}:{kind:'ליד',stage:'חדש'});
 }
 S.collapsed=S.collapsed||{};S.tab=S.tab||{};S.fc='';S.fr='';
@@ -978,6 +994,9 @@ function openRecord(C,id,preset){
   $('#rSave').onclick=async()=>{
     const row={};m.querySelectorAll('[data-k]').forEach(el=>row[el.dataset.k]=el.dataset.bool?el.value==='true':(el.value.trim()||null));
     if(!row[C.name]){m.querySelector(`[data-k="${C.name}"]`).focus();return}
+    if(C.key==='contacts'&&!id){const dg=v=>(v||'').replace(/\D/g,'').slice(-9),pe=dg(row.phone),em=(row.email||'').toLowerCase().split(/[;, ]+/)[0];
+      const dup=(S.contacts||[]).find(c=>(pe.length>=8&&dg(firstPhone(c.phone))===pe)||(em&&em.includes('@')&&(c.email||'').toLowerCase().includes(em))||(c.name||'').trim().toLowerCase()===row.name.trim().toLowerCase());
+      if(dup&&!confirm(`כבר קיים איש קשר דומה: ${dup.name}${dup.company?' · '+dup.company:''}. ליצור בכל זאת רשומה חדשה?`)){closeModal();return openRecord(CONT,dup.id)}}
     if(C.key==='contacts'){if(!row.kind)row.kind='ליד';if(row.kind==='ליד'&&!row.stage)row.stage='חדש';if(row.deal_value)row.deal_value=Number(String(row.deal_value).replace(/[^\d.]/g,''))||null}
     else if(!row[C.statusField])row[C.statusField]=C.key==='staff'?'מועמד חדש':'פעיל';if(C.key==='staff'&&!row.status)row.status='—';
     const res=id?await sb.from(C.table).update(row).eq('id',id).select().single():await sb.from(C.table).insert(row).select().single();
@@ -1005,6 +1024,7 @@ function viewTreat(){
   const rows=all.filter(t=>(!S.trWho||t.staff_id===S.trWho)&&(!S.trMonth||(t.treatment_date||'').startsWith(S.trMonth)));
   const tips=rows.reduce((s,t)=>s+(Number(t.tip_eur)||0),0);
   header(mgr?'טיפולים':'הטיפולים שלי',`${rows.length} טיפולים · טיפים ${eur(tips)}`,'<button class="btn" id="newTr">+ טיפול</button>');
+  if(mgr){seg([['list','טיפולים'],['pay','שכר חודשי']],S.trTab||'list',k=>{S.trTab=k;render()});if(S.trTab==='pay'){const pb=document.createElement('div');$('#main').appendChild(pb);payrollView(pb);$('#newTr').onclick=()=>openTreat(null);return}}
   const f=document.createElement('div');f.className='filters';
   const who=[...new Set(all.map(t=>t.staff_id).filter(Boolean))];
   const mLbl=m=>new Date(m+'-01').toLocaleDateString('he-IL',{month:'long',year:'numeric'});
@@ -1143,7 +1163,8 @@ function companyMates(c){const d=domOf(c),k=normCo(c.company);if(!d&&k.length<4)
 async function contactExtras(m,r){
   const box=document.createElement('div');box.className='cx';
   const mates=companyMates(r),deals=(S.deals||[]).filter(d=>d.contact_id===r.id);
-  box.innerHTML=`${mates.length?`<button class="mini cx-co" id="cxCo">כל אנשי הקשר ב-${esc(r.company||domOf(r))} · ${mates.length+1}</button>`:''}
+  const won=deals.filter(d=>DWON.includes(d.stage)),paid=won.reduce((a,d)=>a+(Number(d.value_eur)||0),0);
+  box.innerHTML=`${r.kind==='לקוח'?`<div class="cx-stats"><div><b>${won.length}</b><span>עסקאות שנסגרו</span></div><div><b>${eur(paid)}</b><span>סה״כ הכנסות</span></div><div><b>${fmtShort(r.last_contact)||'—'}</b><span>קשר אחרון</span></div></div>`:''}${mates.length?`<button class="mini cx-co" id="cxCo">כל אנשי הקשר ב-${esc(r.company||domOf(r))} · ${mates.length+1}</button>`:''}
    <div class="cx-sec"><div class="cx-h"><b>עסקאות</b><button class="mini" id="cxDeal">+ עסקה</button></div>${deals.length?deals.map(d=>`<div class="cx-row" data-did="${d.id}"><span>${esc(d.title)}</span>${pill(d.stage,DSTG)}<span dir="ltr">${d.value_eur?eur(d.value_eur):''}</span></div>`).join(''):'<div class="sub">אין עסקאות</div>'}</div>
    <div class="cx-sec"><div class="cx-h"><b>היסטוריית קשר</b></div>
     <div class="cx-add"><input type="date" id="ixD" value="${todayIso()}"><select id="ixC">${CHANNELS.map(c=>`<option>${c}</option>`).join('')}</select><input id="ixT" placeholder="מה היה? מה סוכם?"><button class="btn small" id="ixAdd">הוספה</button></div>
@@ -1159,7 +1180,10 @@ async function contactExtras(m,r){
   $('#ixAdd').onclick=async()=>{const t=$('#ixT').value.trim();if(!t)return $('#ixT').focus();const d=$('#ixD').value||todayIso();
     const {error}=await sb.from('interactions').insert({contact_id:r.id,happened_on:d,channel:$('#ixC').value,summary:t,source:'ידני'});if(error)return toast('שגיאה: '+error.message);
     if(!r.last_contact||d>r.last_contact){const u=await sb.from('contacts').update({last_contact:d}).eq('id',r.id).select().single();if(!u.error)Object.assign(r,u.data)}
-    $('#ixT').value='';toast('נוסף');load()};
+    $('#ixT').value='';toast('נוסף');load();
+    const fu=document.getElementById('ixFu')||document.createElement('div');fu.id='ixFu';fu.className='cx-fu';
+    fu.innerHTML='מתי לחזור אליו? '+[[3,'עוד 3 ימים'],[7,'שבוע'],[14,'שבועיים'],[30,'חודש']].map(([n,l])=>`<button class="mini" data-fu="${n}">${l}</button>`).join(' ');
+    $('#ixList').before(fu);fu.querySelectorAll('[data-fu]').forEach(b=>b.onclick=async()=>{const nd=addDays(todayIso(),+b.dataset.fu);const u=await sb.from('contacts').update({next_step_date:nd,next_step:r.next_step||'לחזור אליו'}).eq('id',r.id).select().single();if(u.error)return toast('שגיאה: '+u.error.message);Object.assign(r,u.data);const inp=m.querySelector('[data-k="next_step_date"]');if(inp)inp.value=nd;fu.innerHTML=`נקבע: לחזור ב-${fmtShort(nd)}`;toast('נקבעה תזכורת')})};
 }
 function openCompany(r){
   const all=[r,...companyMates(r)],name=r.company||domOf(r)||r.name,m=$('#modal');
@@ -1207,13 +1231,13 @@ function openDeal(id,preset){
    <div class="field"><label>עונה</label><input id="dSe" value="${esc(d.season||'')}"></div>
    <div class="field" style="grid-column:1/-1"><label>הערות</label><textarea id="dN">${esc(d.notes||'')}</textarea></div></div>
    <div class="actions"><div style="display:flex;gap:8px"><button class="btn" id="dSave">שמירה</button><button class="btn ghost" id="dCancel">ביטול</button></div>${id&&isCeo()?'<button class="btn small danger" id="dDel">מחיקה</button>':''}</div>`;
-  $('#overlay').classList.remove('hidden');$('#dCancel').onclick=closeModal;
+  $('#overlay').classList.remove('hidden');$('#dCancel').onclick=closeModal;const getPlus=dealPlus(m,d);
   $('#dSave').onclick=async()=>{
     const num=v=>{v=String(v||'').replace(/[^\d.]/g,'');return v?Number(v):null};
     const cv=$('#dC').value.trim(),ct=(S.contacts||[]).find(c=>label(c)===cv)||(S.contacts||[]).find(c=>c.name===cv);
     const row={title:$('#dT').value.trim()||null,contact_id:ct?ct.id:null,stage:$('#dSt').value,value_eur:num($('#dV').value),commission_pct:num($('#dP').value),commission_to:$('#dTo').value.trim()||null,service_date:$('#dSd').value||null,season:$('#dSe').value.trim()||null,notes:$('#dN').value.trim()||null};
     if(!row.title)return $('#dT').focus();
-    if(cv&&!ct)return toast('לא מצאתי את הלקוח הזה ברשימה');
+    if(cv&&!ct)return toast('לא מצאתי את הלקוח הזה ברשימה');Object.assign(row,getPlus());
     const res=id?await sb.from('deals').update(row).eq('id',id).select().single():await sb.from('deals').insert(row).select().single();
     if(res.error)return toast('שגיאה: '+res.error.message);
     const i=S.deals.findIndex(x=>x.id===res.data.id);if(i>=0)S.deals[i]=res.data;else S.deals.push(res.data);
@@ -1224,6 +1248,161 @@ function openDeal(id,preset){
   if($('#dDel'))$('#dDel').onclick=async()=>{if(!confirm('למחוק את העסקה?'))return;const {error}=await sb.from('deals').delete().eq('id',id);if(error)return toast('שגיאה: '+error.message);S.deals=S.deals.filter(x=>x.id!==id);closeModal();render();toast('נמחק')};
 }
 if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
+
+
+/* ---------- WHATSAPP TEMPLATES ---------- */
+const WA_T={
+ 'קפטן / צוות / בעל יאכטה':n=>`Hi ${n}, this is Tal from BAYZ. Planning the 2027 season already? We bring massage and wellness on board, wherever you're anchored in Greece. Happy to send you our 2027 menu.`,
+ 'ברוקר':n=>`Hi ${n}, Tal from BAYZ here. We provide onboard massage and wellness for charter guests across Greece. Can I send you our 2027 menu and partner terms?`,
+ 'חברת צ׳ארטר':n=>`Hi ${n}, Tal from BAYZ here. We provide onboard massage and wellness for charter guests across Greece. Can I send you our 2027 menu and partner terms?`,
+ 'ניהול יאכטות':n=>`Hi ${n}, Tal from BAYZ here. We bring massage and wellness on board for owners and guests across Greece. Would our 2027 menu be useful for your fleet?`,
+ 'וילה / מלון / קונסיירז׳':n=>`Hi ${n}, Tal from BAYZ here. We send spa therapists to villas and properties across Greece. Shall I send you our 2027 menu and partner terms?`,
+ 'סוכנות / DMC':n=>`Hi ${n}, Tal from BAYZ here. We run wellness for groups and events across Greece: massage, recovery and wellness corners. Can I send you our formats and prices?`,
+ 'אירועים וכנסים':n=>`Hi ${n}, Tal from BAYZ here. We run wellness for groups and events across Greece: massage, recovery and wellness corners. Can I send you our formats and prices?`,
+ 'לקוח פרטי':n=>`Hi ${n}, it's Tal from BAYZ 🙂 Hope you're well! Are you planning to be in Greece in 2027? We'd love to have you again.`
+};
+const waLink=(c)=>{const p=firstPhone(c.phone);if(!p)return '';const d=p.replace(/[^\d]/g,'');const f=WA_T[c.segment];const nm=firstName(c);return `https://wa.me/${d}${f&&!c.do_not_contact?'?text='+encodeURIComponent(f(nm==='there'?'':nm).replace('Hi ,','Hi,')):''}`};
+
+/* ---------- PRICE LIST & DOCUMENTS ---------- */
+const priceLbl=p=>p.price_min&&p.price_max&&p.price_min!==p.price_max?`€${Number(p.price_min).toLocaleString('en-US')}–€${Number(p.price_max).toLocaleString('en-US')}`:p.price_min?eur(p.price_min):'לפי בקשה';
+S.plTab='price';
+function viewPrices(){
+  header('מחירון ומסמכים','המחירון של 2027, תנאי תשלום, הסכמים ומסמכים שחוזרים אליהם',`<button class="btn" id="newP">+ ${S.plTab==='price'?'שירות':'מסמך'}</button>`);
+  seg([['price',`מחירון · ${(S.prices||[]).length}`],['docs',`מסמכים · ${(S.docs||[]).length}`]],S.plTab,k=>{S.plTab=k;render()});
+  const box=document.createElement('div');$('#main').appendChild(box);
+  if(S.plTab==='price'){
+    const by={};(S.prices||[]).filter(p=>p.active!==false).sort((a,b)=>(a.sort||0)-(b.sort||0)).forEach(p=>(by[p.category]=by[p.category]||[]).push(p));
+    box.innerHTML=Object.keys(by).map(g=>`<div class="mgroup"><div class="mg-head" style="color:#5B6B4E">${esc(g)}<span class="mg-count">${by[g].length}</span></div><div class="mtable-wrap"><table class="mtable"><thead><tr><th>שירות</th><th>פירוט</th><th>מחיר</th><th>יחידה</th></tr></thead><tbody>${by[g].map(p=>`<tr data-pid="${p.id}"><td><b dir="ltr">${esc(p.name)}</b></td><td dir="ltr" style="text-align:right">${esc(p.detail||'')}</td><td dir="ltr" style="text-align:right">${priceLbl(p)}</td><td>${esc(p.unit||'')}</td></tr>`).join('')}</tbody></table></div></div>`).join('')+'<div class="sub" style="margin-top:8px">המחירים כוללים מע״מ, כמו בתפריט שנשלח ל-Istion.</div>';
+    box.querySelectorAll('[data-pid]').forEach(r=>r.onclick=()=>openPrice(r.dataset.pid));
+    $('#newP').onclick=()=>openPrice(null);
+  } else {
+    const by={};(S.docs||[]).forEach(d=>(by[d.category||'אחר']=by[d.category||'אחר']||[]).push(d));
+    box.innerHTML=Object.keys(by).map(g=>`<div class="mgroup"><div class="mg-head" style="color:#5B6B4E">${esc(g)}<span class="mg-count">${by[g].length}</span></div><div class="mtable-wrap"><table class="mtable"><tbody>${by[g].map(d=>`<tr data-docid="${d.id}"><td><b>${esc(d.title)}</b>${d.body?`<small class="nm-sub">${esc(d.body.split('\n')[0].slice(0,110))}</small>`:''}</td><td style="width:120px;text-align:left">${d.url?`<a href="${esc(d.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">פתיחה ↗</a>`:d.file_path?'<span class="chip">קובץ</span>':''}</td></tr>`).join('')}</tbody></table></div></div>`).join('')||'<div class="panel empty">אין מסמכים</div>';
+    box.querySelectorAll('[data-docid]').forEach(r=>r.onclick=()=>openDoc(r.dataset.docid));
+    $('#newP').onclick=()=>openDoc(null);
+  }
+}
+function openPrice(id){
+  const p=id?S.prices.find(x=>x.id===id):{category:'עיסוי',active:true},m=$('#modal');
+  const cats=[...new Set((S.prices||[]).map(x=>x.category))];
+  m.innerHTML=`<h2>${id?'עריכת שירות':'שירות חדש'}</h2><div class="row2">
+   <div class="field"><label>קטגוריה</label><input id="pC" list="pCl" value="${esc(p.category||'')}"><datalist id="pCl">${cats.map(c=>`<option value="${esc(c)}">`).join('')}</datalist></div>
+   <div class="field"><label>שם השירות</label><input id="pN" dir="ltr" value="${esc(p.name||'')}"></div>
+   <div class="field" style="grid-column:1/-1"><label>פירוט</label><input id="pD" dir="ltr" value="${esc(p.detail||'')}"></div>
+   <div class="field"><label>מחיר מינימום (€)</label><input id="pMin" inputmode="decimal" value="${esc(p.price_min??'')}"></div>
+   <div class="field"><label>מחיר מקסימום (€)</label><input id="pMax" inputmode="decimal" value="${esc(p.price_max??'')}"></div>
+   <div class="field"><label>יחידה</label><input id="pU" value="${esc(p.unit||'')}" placeholder="לטיפול / לשעה / ליום"></div>
+   <div class="field"><label>הערה</label><input id="pNo" value="${esc(p.note||'')}"></div></div>
+   <div class="actions"><div style="display:flex;gap:8px"><button class="btn" id="pSave">שמירה</button><button class="btn ghost" id="pCancel">ביטול</button></div>${id?'<button class="btn small ghost" id="pOff">הסרה מהמחירון</button>':''}</div>`;
+  $('#overlay').classList.remove('hidden');$('#pCancel').onclick=closeModal;
+  const num=v=>{v=String(v||'').replace(/[^\d.]/g,'');return v?Number(v):null};
+  const save=async row=>{const res=id?await sb.from('price_items').update(row).eq('id',id).select().single():await sb.from('price_items').insert(row).select().single();if(res.error)return toast('שגיאה: '+res.error.message);const i=S.prices.findIndex(x=>x.id===res.data.id);if(i>=0)S.prices[i]=res.data;else S.prices.push(res.data);closeModal();toast('נשמר');render()};
+  $('#pSave').onclick=()=>{const row={category:$('#pC').value.trim()||'אחר',name:$('#pN').value.trim(),detail:$('#pD').value.trim()||null,price_min:num($('#pMin').value),price_max:num($('#pMax').value),unit:$('#pU').value.trim()||null,note:$('#pNo').value.trim()||null,sort:p.sort||((S.prices||[]).length+1)};if(!row.name)return $('#pN').focus();save(row)};
+  if($('#pOff'))$('#pOff').onclick=()=>save({active:false});
+}
+function openDoc(id){
+  const d=id?S.docs.find(x=>x.id===id):{},m=$('#modal');
+  m.innerHTML=`<h2>${id?esc(d.title):'מסמך חדש'}</h2><div class="row2">
+   <div class="field" style="grid-column:1/-1"><label>שם</label><input id="oT" value="${esc(d.title||'')}"></div>
+   <div class="field"><label>קטגוריה</label><input id="oC" value="${esc(d.category||'')}" placeholder="הסכמים / תנאים / מחירון"></div>
+   <div class="field"><label>קישור</label><input id="oU" dir="ltr" value="${esc(d.url||'')}"></div>
+   <div class="field" style="grid-column:1/-1"><label>תוכן / הערות</label><textarea id="oB" style="min-height:120px">${esc(d.body||'')}</textarea></div>
+   <div class="field" style="grid-column:1/-1"><label>קובץ</label><input type="file" id="oF">${d.file_path?`<div id="oFiles"></div>`:''}</div></div>
+   <div class="actions"><div style="display:flex;gap:8px"><button class="btn" id="oSave">שמירה</button><button class="btn ghost" id="oCancel">ביטול</button></div></div>`;
+  $('#overlay').classList.remove('hidden');$('#oCancel').onclick=closeModal;
+  if(d.file_path)showFiles($('#oFiles'),[d.file_path]);
+  $('#oSave').onclick=async()=>{const row={title:$('#oT').value.trim(),category:$('#oC').value.trim()||null,url:$('#oU').value.trim()||null,body:$('#oB').value.trim()||null};if(!row.title)return $('#oT').focus();
+    const f=$('#oF').files[0];if(f){const path='monday/docs/'+Date.now()+'_'+f.name.replace(/[^\w.\-]+/g,'_');const u=await sb.storage.from('files').upload(path,f,{upsert:true});if(u.error)return toast('שגיאה בהעלאה: '+u.error.message);row.file_path=path}
+    const res=id?await sb.from('documents').update(row).eq('id',id).select().single():await sb.from('documents').insert(row).select().single();if(res.error)return toast('שגיאה: '+res.error.message);
+    const i=S.docs.findIndex(x=>x.id===res.data.id);if(i>=0)S.docs[i]=res.data;else S.docs.push(res.data);closeModal();toast('נשמר');render()};
+}
+
+/* ---------- DEAL ITEMS, TEAM, PROFIT, QUOTE ---------- */
+function dealPlus(m,d){
+  const items=(d.items||[]).map(x=>({...x}));const team=S.staff.filter(s=>s.stage==='צוות Bayz'||s.stage==='מאגר מאושר'||(d.staff_ids||[]).includes(s.id)).sort((a,b)=>a.full_name.localeCompare(b.full_name));
+  const sup=(S.suppliers||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const wrap=document.createElement('div');wrap.className='dp';
+  wrap.innerHTML=`<div class="cx-sec"><div class="cx-h"><b>שירותים בעסקה</b><select id="dpAdd"><option value="">+ הוספה מהמחירון</option>${(S.prices||[]).filter(p=>p.active!==false).map(p=>`<option value="${p.id}">${esc(p.name)} · ${priceLbl(p)}</option>`).join('')}<option value="_">שורה חופשית</option></select></div><div id="dpItems"></div></div>
+   <div class="row2"><div class="field"><label>מיקום</label><input id="dpLoc" value="${esc(d.location||'')}" placeholder="למשל: פורוס"></div><div class="field"><label>מספר אורחים</label><input id="dpG" inputmode="numeric" value="${esc(d.guests??'')}"></div>
+   <div class="field"><label>מטפלים משובצים</label><select id="dpStaff" multiple size="4">${team.map(s=>`<option value="${s.id}" ${(d.staff_ids||[]).includes(s.id)?'selected':''}>${esc(s.full_name)}</option>`).join('')}</select></div>
+   <div class="field"><label>ספקים</label><select id="dpSup" multiple size="4">${sup.map(s=>`<option value="${s.id}" ${(d.supplier_ids||[]).includes(s.id)?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>
+   <div class="field"><label>עלות (מטפלים + ספקים, €)</label><input id="dpCost" inputmode="decimal" value="${esc(d.cost_eur??'')}"></div><div class="field"><label>רווח משוער</label><div class="ro" id="dpProfit">—</div></div></div>
+   ${d.id?'<button class="btn small ghost" id="dpQuote">הצעת מחיר להדפסה / PDF</button>':''}`;
+  m.querySelector('.actions').before(wrap);
+  const num=v=>{v=String(v||'').replace(/[^\d.]/g,'');return v?Number(v):0};
+  const draw=()=>{$('#dpItems').innerHTML=items.length?items.map((x,i)=>`<div class="dp-row"><input data-in="${i}" dir="ltr" value="${esc(x.name)}"><input data-iq="${i}" inputmode="numeric" value="${x.qty}" title="כמות"><input data-ip="${i}" inputmode="decimal" value="${x.price}" title="מחיר ליחידה"><span dir="ltr">${eur(x.qty*x.price)}</span><button class="link" data-ix="${i}">✕</button></div>`).join(''):'<div class="sub">אפשר להוסיף שירותים מהמחירון, והשווי יחושב לבד</div>';
+    $('#dpItems').querySelectorAll('input').forEach(el=>el.oninput=()=>{const i=+(el.dataset.in||el.dataset.iq||el.dataset.ip);if(el.dataset.in!==undefined)items[i].name=el.value;if(el.dataset.iq!==undefined)items[i].qty=num(el.value);if(el.dataset.ip!==undefined)items[i].price=num(el.value);sync(false)});
+    $('#dpItems').querySelectorAll('[data-ix]').forEach(b=>b.onclick=()=>{items.splice(+b.dataset.ix,1);draw();sync(true)});sync(true)};
+  const sync=redraw=>{const tot=items.reduce((s,x)=>s+x.qty*x.price,0);if(items.length)$('#dV').value=tot||'';const v=num($('#dV').value),c=num($('#dpCost').value),com=v*num($('#dP').value)/100;$('#dpProfit').textContent=v?`${eur(v-c-com)} (אחרי עלות ועמלה)`:'—';if(!redraw)$('#dpItems').querySelectorAll('.dp-row span').forEach((s,i)=>s.textContent=eur(items[i].qty*items[i].price))};
+  $('#dpAdd').onchange=e=>{const v=e.target.value;e.target.value='';if(!v)return;if(v==='_')items.push({name:'',qty:1,price:0});else{const p=S.prices.find(x=>x.id===v);items.push({name:p.name+(p.detail?' · '+p.detail:''),qty:1,price:Number(p.price_min)||0})}draw()};
+  ['dV','dP','dpCost'].forEach(k=>$('#'+k).addEventListener('input',()=>sync(true)));
+  draw();
+  if($('#dpQuote'))$('#dpQuote').onclick=()=>printQuote({...d,items,location:$('#dpLoc').value,guests:$('#dpG').value,value_eur:num($('#dV').value)});
+  return ()=>({items:items.filter(x=>x.name),location:$('#dpLoc').value.trim()||null,guests:num($('#dpG').value)||null,staff_ids:[...$('#dpStaff').selectedOptions].map(o=>o.value),supplier_ids:[...$('#dpSup').selectedOptions].map(o=>o.value),cost_eur:num($('#dpCost').value)||null});
+}
+function printQuote(d){
+  const c=(S.contacts||[]).find(x=>x.id===d.contact_id)||{};const terms=(S.docs||[]).find(x=>/תנאי תשלום וביטול/.test(x.title));
+  const rows=(d.items||[]).length?d.items:[{name:d.title,qty:1,price:Number(d.value_eur)||0}];const tot=rows.reduce((s,x)=>s+x.qty*x.price,0);
+  const fmt=n=>'€'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2});
+  const w=window.open('','_blank');if(!w)return toast('הדפדפן חסם חלון חדש');
+  w.document.write(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>BAYZ Quote · ${esc(c.company||c.name||'')}</title><link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;800&display=swap" rel="stylesheet"><style>
+  @page{size:A4;margin:18mm}*{box-sizing:border-box}body{font-family:Assistant,Arial,sans-serif;color:#111;margin:0;font-size:12.5pt;line-height:1.5}
+  .top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1.5px solid #111;padding-bottom:12px}.logo{font-weight:800;font-size:28pt;letter-spacing:.04em}.logo i{color:#5B6B4E;font-style:normal}.meta{text-align:right;font-size:10pt;letter-spacing:.12em;text-transform:uppercase;color:#666}
+  h1{font-size:22pt;margin:22px 0 4px}.sub{color:#666}table{width:100%;border-collapse:collapse;margin:22px 0}th{text-align:left;font-size:9.5pt;letter-spacing:.12em;text-transform:uppercase;color:#666;border-bottom:1px solid #111;padding:8px 6px}td{padding:10px 6px;border-bottom:1px solid #e7e4de}td.n,th.n{text-align:right;white-space:nowrap}
+  .tot td{border:0;font-weight:800;font-size:15pt;padding-top:14px}.box{background:#F6F5F2;border-radius:8px;padding:12px 14px;font-size:10.5pt;color:#333}.box b{display:block;margin-bottom:4px;color:#111}footer{margin-top:28px;border-top:1.5px solid #111;padding-top:8px;font-size:9.5pt;color:#666;display:flex;justify-content:space-between}
+  </style></head><body><div class="top"><div class="logo">BAYZ<i>.</i></div><div class="meta">Quote<br>${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}</div></div>
+  <h1>${esc(d.title||'Wellness programme')}</h1><div class="sub">Prepared for ${esc(c.company||c.name||'')}${d.location?' · '+esc(d.location):''}${d.service_date?' · '+new Date(d.service_date).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}):''}${d.guests?' · '+esc(d.guests)+' guests':''}</div>
+  <table><thead><tr><th>Service</th><th class="n">Qty</th><th class="n">Unit price</th><th class="n">Total</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.name)}</td><td class="n">${x.qty}</td><td class="n">${fmt(x.price)}</td><td class="n">${fmt(x.qty*x.price)}</td></tr>`).join('')}<tr class="tot"><td colspan="3">Total (VAT included)</td><td class="n">${fmt(tot)}</td></tr></tbody></table>
+  <div class="box"><b>Payment and cancellation</b>Short-notice bookings are paid in full at confirmation. Free cancellation up to 48 hours before; 50% between 24 and 48 hours; 100% under 24 hours, except for events beyond anyone's control, such as weather. Longer bookings (bundles, packages, charter accompaniment): 30% deposit at confirmation, 30% about two weeks before, and the balance on the first day of the charter.</div>
+  <footer><span>BAYZ Spa I.K.E. · Greece · bayzspa.com</span><span>tal@bayzspa.com</span></footer><script>setTimeout(()=>print(),600)<\/script></body></html>`);w.document.close();
+}
+
+/* ---------- SEASON CALENDAR ---------- */
+function viewSeason(){
+  const ds=(S.deals||[]).filter(d=>d.service_date&&d.stage!=='בוטל').sort((a,b)=>a.service_date.localeCompare(b.service_date));
+  header('לוח עונה','מי עובד איפה ומתי, לפי העסקאות');
+  const by={};ds.forEach(d=>{const k=d.service_date.slice(0,7);(by[k]=by[k]||[]).push(d)});
+  const sName=id=>S.staff.find(s=>s.id===id)?.full_name||'';
+  const box=document.createElement('div');$('#main').appendChild(box);
+  box.innerHTML=Object.keys(by).map(k=>`<div class="mgroup"><div class="mg-head" style="color:#5B6B4E">${new Date(k+'-01').toLocaleDateString('he-IL',{month:'long',year:'numeric'})}<span class="mg-count">${by[k].length}</span></div><div class="mtable-wrap"><table class="mtable"><thead><tr><th>תאריך</th><th>עסקה</th><th>מיקום</th><th>מטפלים</th><th>שלב</th></tr></thead><tbody>${by[k].map(d=>`<tr data-did="${d.id}"><td>${fmtShort(d.service_date)}</td><td><b>${esc(d.title)}</b><small class="nm-sub">${esc(cName(d.contact_id))}</small></td><td>${esc(d.location||'')}</td><td>${(d.staff_ids||[]).length?esc((d.staff_ids||[]).map(sName).filter(Boolean).join(', ')):'<span class="chip late">לא שובץ</span>'}</td><td>${pill(d.stage,DSTG)}</td></tr>`).join('')}</tbody></table></div></div>`).join('')||'<div class="panel empty">כשתהיינה עסקאות עם תאריך שירות, הן יופיעו כאן לפי חודש, עם המטפלים המשובצים.</div>';
+  box.querySelectorAll('[data-did]').forEach(r=>r.onclick=()=>openDeal(r.dataset.did));
+}
+
+/* ---------- PAYROLL ---------- */
+function payrollView(box){
+  const T=S.treatments||[],months=[...new Set(T.map(t=>(t.treatment_date||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  const m=S.payM||months[0]||new Date().toISOString().slice(0,7);
+  const rows=T.filter(t=>(t.treatment_date||'').startsWith(m));const by={};rows.forEach(t=>{(by[t.staff_id]=by[t.staff_id]||[]).push(t)});
+  const st=id=>S.staff.find(s=>s.id===id)||{};
+  const lines=Object.keys(by).map(id=>{const L=by[id],s=st(id),rate=Number(s.pay_rate_eur)||0,tips=L.reduce((a,t)=>a+(Number(t.tip_eur)||0),0);return {id,name:s.full_name||'—',n:L.length,rate,pay:rate*L.length,tips,total:rate*L.length+tips}});
+  box.innerHTML=`<div class="filters"><select id="payM">${(months.length?months:[m]).map(x=>`<option ${x===m?'selected':''}>${x}</option>`).join('')}</select><button class="btn small ghost" id="payCsv">ייצוא לרואה החשבון (CSV)</button></div>
+   <div class="mtable-wrap"><table class="mtable"><thead><tr><th>מטפל/ת</th><th>טיפולים</th><th>תעריף לטיפול</th><th>תשלום</th><th>טיפים</th><th>סה״כ</th></tr></thead><tbody>${lines.map(l=>`<tr data-sid="${l.id}"><td><b>${esc(l.name)}</b></td><td>${l.n}</td><td>${l.rate?eur(l.rate):'<span class="chip late">חסר תעריף</span>'}</td><td>${eur(l.pay)}</td><td>${eur(l.tips)}</td><td><b>${eur(l.total)}</b></td></tr>`).join('')||'<tr><td colspan="6" class="empty">אין טיפולים בחודש הזה</td></tr>'}</tbody></table></div>
+   <div class="sub" style="margin-top:6px">את התעריף לטיפול קובעים בכרטיס של המטפל בכוח אדם (שדה ״תעריף לטיפול״). לחיצה על שורה פותחת את הכרטיס.</div>`;
+  box.querySelector('#payM').onchange=e=>{S.payM=e.target.value;render()};
+  box.querySelectorAll('[data-sid]').forEach(r=>r.onclick=()=>openRecord(STAFF,r.dataset.sid));
+  box.querySelector('#payCsv').onclick=()=>{const csv='﻿'+[['מטפל/ת','טיפולים','תעריף','תשלום','טיפים','סה״כ'],...lines.map(l=>[l.name,l.n,l.rate,l.pay,l.tips,l.total])].map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(',')).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`BAYZ-payroll-${m}.csv`;a.click()};
+}
+
+/* ---------- INSIGHTS ---------- */
+function insightsHtml(){
+  const C=(S.contacts||[]).filter(c=>!c.archived),segs=CSEG.filter(s=>C.some(c=>c.segment===s));
+  const rows=segs.map(s=>{const L=C.filter(c=>c.segment===s),cl=L.filter(c=>c.kind==='לקוח').length,hot=L.filter(c=>c.kind!=='לקוח'&&['בשיחה','חם','ענו בעבר'].includes(c.stage)).length;return {s,n:L.length,cl,hot,pct:L.length?Math.round(cl/L.length*100):0}}).sort((a,b)=>b.pct-a.pct||b.cl-a.cl);
+  const src={};C.filter(c=>c.kind==='לקוח').forEach(c=>{const k=(c.source||'לא ידוע').split(' · ')[0];src[k]=(src[k]||0)+1});
+  return `<div class="panel" style="margin-top:16px"><h2>מאיפה מגיעים הלקוחות</h2><div class="mtable-wrap"><table class="mtable"><thead><tr><th>סוג</th><th>אנשי קשר</th><th>לקוחות</th><th>אחוז שהפכו ללקוח</th><th>לידים חמים</th></tr></thead><tbody>${rows.map(r=>`<tr><td><b>${esc(r.s)}</b></td><td>${r.n}</td><td>${r.cl}</td><td>${r.pct}%</td><td>${r.hot}</td></tr>`).join('')}</tbody></table></div>
+   <div class="sub" style="margin-top:8px">מקור הלקוחות: ${Object.entries(src).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${esc(k)} ${v}`).join(' · ')}</div></div>`;
+}
+
+/* ---------- MEETING AGENDA ---------- */
+function buildAgenda(){
+  const iso=todayIso(),late=S.tasks.filter(t=>t.status!=='done'&&t.due_date&&t.due_date<iso),wk=addDays(iso,7),soon=S.tasks.filter(t=>t.status!=='done'&&t.due_date&&t.due_date>=iso&&t.due_date<=wk),blocked=S.tasks.filter(t=>t.status==='blocked');
+  const open=(S.deals||[]).filter(d=>['הצעת מחיר','משא ומתן'].includes(d.stage));
+  const L=[];
+  if(late.length)L.push('משימות באיחור:\n'+late.map(t=>`• ${t.title} (${dName(t.department_id)}, ${fmtD(t.due_date)})`).join('\n'));
+  if(soon.length)L.push('השבוע:\n'+soon.map(t=>`• ${t.title} (${fmtD(t.due_date)})`).join('\n'));
+  if(blocked.length)L.push('ממתין לצד השני:\n'+blocked.map(t=>`• ${t.title}`).join('\n'));
+  if(open.length)L.push('עסקאות פתוחות:\n'+open.map(d=>`• ${d.title}${d.value_eur?' · '+eur(d.value_eur):''}`).join('\n'));
+  return L.join('\n\n')||'אין נושאים פתוחים';
+}
 
 sb.auth.onAuthStateChange((ev)=>{if(ev==='SIGNED_OUT')show('auth')});
 boot();

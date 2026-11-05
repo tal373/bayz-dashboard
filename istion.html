@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>BAYZ × Istion · Bookings & Commission</title>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--ink:#111;--soft:#F6F5F2;--line:#E7E4DE;--olive:#5B6B4E;--muted:#6b6b6b}
+*{box-sizing:border-box}body{margin:0;background:#fff;color:var(--ink);font-family:Assistant,Arial,sans-serif;font-size:16px;line-height:1.5}
+.wrap{max-width:1040px;margin:0 auto;padding:32px 16px 60px}
+header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1.5px solid var(--ink);padding-bottom:14px;gap:12px;flex-wrap:wrap}
+.logo{font-weight:800;font-size:30px;letter-spacing:.04em}.logo i{color:var(--olive);font-style:normal}.logo small{display:block;font-size:11px;letter-spacing:.22em;color:var(--muted);font-weight:600}
+h1{font-size:15px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:600}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:22px 0}.k{background:var(--soft);border-radius:12px;padding:14px 16px}.k b{display:block;font-size:24px}.k span{font-size:13px;color:var(--muted)}
+table{width:100%;border-collapse:collapse}th{text-align:left;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--ink);padding:10px 8px;font-weight:600}td{padding:12px 8px;border-bottom:1px solid var(--line)}td.n,th.n{text-align:right;white-space:nowrap}
+.pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:13px;background:var(--soft)}
+.tw{overflow-x:auto}.empty{color:var(--muted);padding:30px 0;text-align:center}
+footer{margin-top:26px;font-size:13px;color:var(--muted)}
+@media(max-width:700px){.kpis{grid-template-columns:1fr 1fr}th:nth-child(3),td:nth-child(3){display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><div class="logo">BAYZ<i>.</i><small>× ISTION</small></div><h1>Bookings &amp; commission · 2027</h1></header>
+<div class="kpis" id="k"></div>
+<div class="tw"><table><thead><tr><th>Booking</th><th>Client</th><th>Location</th><th>Date</th><th>Status</th><th class="n">Value</th><th class="n">Commission</th></tr></thead><tbody id="t"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody></table></div>
+<footer>Live view shared by BAYZ with Istion. Values include VAT. For questions: tal@bayzspa.com</footer>
+</div>
+<script>
+const ST={'הצעת מחיר':'Quote sent','משא ומתן':'In discussion','אושר':'Confirmed','מקדמה שולמה':'Deposit paid','שולם במלואו':'Paid in full'};
+const eur=n=>'€'+Number(n||0).toLocaleString('en-US',{maximumFractionDigits:2});
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+(async()=>{
+  const k=new URLSearchParams(location.search).get('k')||'';
+  const sb=supabase.createClient('https://rezrtfurbpqaguyeapck.supabase.co','sb_publishable_3koDVOtTh8ivOHog9p-Odg_c-1uLRyE');
+  const {data,error}=await sb.rpc('istion_portal',{tok:k});
+  const T=document.getElementById('t');
+  if(error||!data){T.innerHTML='<tr><td colspan="7" class="empty">This link is not valid.</td></tr>';return}
+  const won=data.filter(d=>['אושר','מקדמה שולמה','שולם במלואו'].includes(d.stage));
+  document.getElementById('k').innerHTML=`<div class="k"><b>${data.length}</b><span>Bookings &amp; quotes</span></div><div class="k"><b>${won.length}</b><span>Confirmed</span></div><div class="k"><b>${eur(won.reduce((a,d)=>a+Number(d.value_eur||0),0))}</b><span>Confirmed value</span></div><div class="k"><b>${eur(won.reduce((a,d)=>a+Number(d.commission_eur||0),0))}</b><span>Commission to Istion</span></div>`;
+  T.innerHTML=data.length?data.map(d=>`<tr><td><b>${esc(d.title)}</b></td><td>${esc(d.client||'')}</td><td>${esc(d.location||'')}</td><td>${d.service_date?new Date(d.service_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):''}</td><td><span class="pill">${esc(ST[d.stage]||d.stage)}</span></td><td class="n">${d.value_eur?eur(d.value_eur):''}</td><td class="n">${d.commission_pct?esc(d.commission_pct)+'% · '+eur(d.commission_eur):''}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">No bookings yet for 2027.</td></tr>';
+})();
+</script>
+</body>
+</html>
