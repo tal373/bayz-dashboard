@@ -350,6 +350,14 @@ main{padding:48px 56px 90px;max-width:1220px}
   .grid.two{gap:8px}
   .mtable th,.mtable td{padding:11px 10px}
 }
+/* campaigns, treatments, archive */
+.note-panel{background:var(--soft);border:0;font-size:14px;margin-bottom:12px}
+.seq{margin-bottom:12px}.seq-h{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.seq-h h2{margin:0 0 4px;display:flex;gap:8px;align-items:center}
+.seq-stats{display:flex;gap:18px;margin:10px 0 6px;font-size:14px;color:var(--muted)}.seq-stats b{color:var(--ink);font-size:18px;margin-left:4px}
+.seq-steps{margin:6px 0 0;padding-right:18px;font-size:14px;display:flex;flex-direction:column;gap:4px}
+.md{font-size:14px;line-height:1.6;margin-top:10px}.md h3{margin:18px 0 6px;font-size:17px}.md blockquote{margin:6px 0;padding:8px 12px;background:var(--soft);border-right:3px solid var(--olive);direction:ltr;text-align:left}.md li{margin:3px 18px 3px 0}.md hr{border:0;border-top:1px solid var(--line);margin:14px 0}
+.mdrow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;border-bottom:1px solid var(--line);padding:6px 0;font-size:13px}
+.ro{background:var(--soft);border-radius:8px;padding:8px 10px;font-size:14px;white-space:normal}
 </style>
 </head>
 <body>
@@ -398,7 +406,7 @@ main{padding:48px 56px 90px;max-width:1220px}
 </div>
 
 <button id="fab" class="fab hidden" aria-label="הוספה">+</button>
-<div id="fabMenu" class="fab-menu hidden"><button data-add="task">משימה</button><button data-add="staff">איש צוות / מועמד</button><button data-add="lead">ליד / לקוח</button><button data-add="supp">ספק</button><button data-add="meet">פגישה</button></div>
+<div id="fabMenu" class="fab-menu hidden"><button data-add="task">משימה</button><button data-add="staff">איש צוות / מועמד</button><button data-add="lead">ליד / לקוח</button><button data-add="supp">ספק</button><button data-add="meet">פגישה</button><button data-add="treat">טיפול</button></div>
 <div id="overlay" class="overlay hidden"><div class="modal" id="modal"></div></div>
 <div class="toast" id="toast"></div>
 
@@ -458,6 +466,8 @@ async function loadAll(){
     isMgr()?fetchAll('contacts'):Promise.resolve([])
   ]);
   S.profiles=p.data||[];S.depts=d.data||[];S.tasks=t.data||[];S.meetings=m.data||[];S.staff=st.data||[];S.suppliers=su.data||[];S.contacts=co||[];
+  const [tr,sq,en,ar,ms]=await Promise.all([fetchAll('treatments'),isMgr()?sb.from('sequences').select('*').order('created_at'):Promise.resolve({data:[]}),isMgr()?fetchAll('enrollments'):Promise.resolve([]),isMgr()?sb.from('archive_items').select('*').order('created_at'):Promise.resolve({data:[]}),isMgr()?Promise.resolve({data:null}):sb.from('staff').select('id,full_name,profile_id').eq('profile_id',S.me.id).maybeSingle()]);
+  S.treatments=tr||[];S.sequences=sq.data||[];S.enrollments=en||[];S.archive=ar.data||[];S.myStaff=ms.data||null;
 }
 async function boot(){
   const {data:{session}}=await sb.auth.getSession();
@@ -471,7 +481,7 @@ async function boot(){
   S.view='today';
   if(isCeo()&&!$('#settingsBtn')){const x=document.createElement('button');x.className='link';x.id='settingsBtn';x.textContent='צוות והרשאות';x.style.display='block';x.onclick=()=>{S.view='team';render()};$('.me').insertBefore(x,$('#signOut'))}
   $('#fab').classList.remove('hidden');
-  if(!isMgr())document.querySelectorAll('#fabMenu [data-add]:not([data-add="task"])').forEach(x=>x.remove());
+  if(!isMgr())document.querySelectorAll('#fabMenu [data-add]:not([data-add="task"]):not([data-add="treat"])').forEach(x=>x.remove());
   show('app');render();
 }
 
@@ -479,7 +489,8 @@ async function boot(){
 function navItems(){
   const mine=S.tasks.filter(t=>t.assignee_id===S.me.id&&t.status!=='done').length;
   const it=[['today','היום'],['tasks','משימות',mine]];
-  if(isMgr())it.push(['clients','לקוחות ולידים'],['people','אנשי קשר'],['meetings','פגישות']);
+  if(isMgr())it.push(['clients','לקוחות ולידים'],['campaigns','קמפיינים'],['people','אנשי קשר'],['treat','טיפולים'],['meetings','פגישות'],['archive','ארכיון']);
+  else it.push(['treat','הטיפולים שלי']);
   return it;
 }
 function renderNav(){
@@ -490,7 +501,7 @@ function renderNav(){
 }
 function render(){
   renderNav();
-  const v={today:viewToday,dash:viewToday,mine:viewTasksHub,tasks:viewTasksHub,clients:viewClients,people:viewPeople,staff:viewPeople,suppliers:viewPeople,meetings:viewMeetings,team:viewTeam}[S.view]||viewToday;
+  const v={today:viewToday,dash:viewToday,mine:viewTasksHub,tasks:viewTasksHub,clients:viewClients,people:viewPeople,staff:viewPeople,suppliers:viewPeople,meetings:viewMeetings,team:viewTeam,treat:viewTreat,campaigns:viewCampaigns,archive:viewArchive}[S.view]||viewToday;
   $('#main').innerHTML='';v();window.scrollTo(0,0);
 }
 
@@ -661,7 +672,7 @@ function viewToday(){
 }
 $('#fab').onclick=e=>{e.stopPropagation();$('#fabMenu').classList.toggle('hidden')};
 document.addEventListener('click',e=>{if(!e.target.closest('#fabMenu'))$('#fabMenu').classList.add('hidden')});
-$('#fabMenu').querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{$('#fabMenu').classList.add('hidden');const a=b.dataset.add;if(a==='task')openTask(null,{assignee_id:S.me.id});else if(a==='staff')openRecord(STAFF,null);else if(a==='supp')openRecord(SUPP,null);else if(a==='lead')openRecord(CONT,null,{kind:'ליד',stage:'חדש'});else newMeeting()});
+$('#fabMenu').querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{$('#fabMenu').classList.add('hidden');const a=b.dataset.add;if(a==='task')openTask(null,{assignee_id:S.me.id});else if(a==='staff')openRecord(STAFF,null);else if(a==='supp')openRecord(SUPP,null);else if(a==='lead')openRecord(CONT,null,{kind:'ליד',stage:'חדש'});else if(a==='treat')openTreat(null);else newMeeting()});
 
 /* ---------- TASK MODAL ---------- */
 async function openTask(id,preset={}){
@@ -749,15 +760,22 @@ function viewTeam(){
   const pend=S.profiles.filter(p=>!p.active);
   const w=document.createElement('div');w.className='grid';w.style.gap='16px';
   const roleSel=p=>`<select data-role="${p.id}" ${p.id===S.me.id?'disabled':''}>${Object.entries(ROLE).map(([k,v])=>`<option value="${k}" ${p.role===k?'selected':''}>${v}</option>`).join('')}</select>`;
+  const staffSel=p=>`<select data-plink="${p.id}"><option value="">ללא</option>${S.staff.filter(s=>s.stage==='צוות Bayz'||s.stage==='מאגר מאושר'||s.profile_id===p.id).sort((a,b)=>a.full_name.localeCompare(b.full_name)).map(s=>`<option value="${s.id}" ${s.profile_id===p.id?'selected':''}>${esc(s.full_name)}</option>`).join('')}</select>`;
   const deptSel=(p,attr='data-pdept')=>`<select ${attr}="${p.id}"><option value="">ללא</option>${S.depts.map(d=>`<option value="${d.id}" ${p.department_id===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}</select>`;
   w.innerHTML=`${pend.length?`<div class="panel"><h2>ממתינים לאישור <span class="chip today">${pend.length}</span></h2><table><tr><th>שם</th><th>אימייל</th><th>תפקיד</th><th>מחלקה</th><th></th></tr>${pend.map(p=>`<tr><td>${esc(p.full_name)}</td><td dir="ltr" style="text-align:right">${esc(p.email)}</td><td>${roleSel(p)}</td><td>${deptSel(p)}</td><td><button class="btn small" data-approve="${p.id}">אישור</button></td></tr>`).join('')}</table></div>`:''}
-  <div class="panel"><h2>משתמשים פעילים</h2><table><tr><th>שם</th><th>אימייל</th><th>תפקיד</th><th>מחלקה</th><th></th></tr>${S.profiles.filter(p=>p.active).map(p=>`<tr><td><b>${esc(p.full_name)}</b></td><td dir="ltr" style="text-align:right">${esc(p.email)}</td><td>${roleSel(p)}</td><td>${deptSel(p)}</td><td>${p.id!==S.me.id?`<button class="btn small ghost" data-deact="${p.id}">השבתה</button>`:''}</td></tr>`).join('')}</table></div>
+  <div class="panel"><h2>משתמשים פעילים</h2><table><tr><th>שם</th><th>אימייל</th><th>תפקיד</th><th>מחלקה</th><th>כרטיס בכוח אדם</th><th></th></tr>${S.profiles.filter(p=>p.active).map(p=>`<tr><td><b>${esc(p.full_name)}</b></td><td dir="ltr" style="text-align:right">${esc(p.email)}</td><td>${roleSel(p)}</td><td>${deptSel(p)}</td><td>${staffSel(p)}</td><td>${p.id!==S.me.id?`<button class="btn small ghost" data-deact="${p.id}">השבתה</button>`:''}</td></tr>`).join('')}</table></div>
   <div class="panel"><h2>מחלקות ואחראים</h2><table><tr><th>מחלקה</th><th>אחראי/ת</th></tr>${S.depts.map(d=>`<tr><td>${esc(d.name)}</td><td><select data-downer="${d.id}"><option value="">לא הוגדר</option>${S.profiles.filter(p=>p.active&&p.role!=='employee').map(p=>`<option value="${p.id}" ${d.owner_id===p.id?'selected':''}>${esc(p.full_name)}</option>`).join('')}</select></td></tr>`).join('')}</table></div>`;
+  w.querySelectorAll('.panel').forEach(x=>x.style.minWidth='0');w.style.gridTemplateColumns='minmax(0,1fr)';
+  w.querySelectorAll('.panel>table').forEach(t=>{const d=document.createElement('div');d.style.overflowX='auto';t.parentNode.insertBefore(d,t);d.appendChild(t)});
   $('#main').appendChild(w);
   const upd=async(id,row)=>{const {data,error}=await sb.from('profiles').update(row).eq('id',id).select().single();if(error){toast('שגיאה: '+error.message);return}const i=S.profiles.findIndex(p=>p.id===id);S.profiles[i]=data;toast('עודכן')};
   w.querySelectorAll('[data-approve]').forEach(b=>b.onclick=async()=>{const id=b.dataset.approve;await upd(id,{active:true,role:w.querySelector(`[data-role="${id}"]`).value,department_id:w.querySelector(`[data-pdept="${id}"]`).value||null});render()});
   w.querySelectorAll('.panel:not(:first-child) [data-role], [data-role]').forEach(s=>s.onchange=e=>{const p=S.profiles.find(x=>x.id===s.dataset.role);if(p.active)upd(p.id,{role:e.target.value})});
   w.querySelectorAll('[data-pdept]').forEach(s=>s.onchange=e=>{const p=S.profiles.find(x=>x.id===s.dataset.pdept);if(p.active)upd(p.id,{department_id:e.target.value||null})});
+  w.querySelectorAll('[data-plink]').forEach(s=>s.onchange=async e=>{const pid=s.dataset.plink,sid=e.target.value;const old=S.staff.find(x=>x.profile_id===pid);
+    if(old&&old.id!==sid){const {error}=await sb.from('staff').update({profile_id:null}).eq('id',old.id);if(error)return toast('שגיאה: '+error.message);old.profile_id=null}
+    if(sid){const {error}=await sb.from('staff').update({profile_id:pid}).eq('id',sid);if(error)return toast('שגיאה: '+error.message);S.staff.find(x=>x.id===sid).profile_id=pid}
+    toast('עודכן')});
   w.querySelectorAll('[data-deact]').forEach(b=>b.onclick=async()=>{if(!confirm('להשבית את המשתמש?'))return;await upd(b.dataset.deact,{active:false});render()});
   w.querySelectorAll('[data-downer]').forEach(s=>s.onchange=async e=>{const {error}=await sb.from('departments').update({owner_id:e.target.value||null}).eq('id',s.dataset.downer);if(error)return toast('שגיאה: '+error.message);S.depts.find(d=>d.id===s.dataset.downer).owner_id=e.target.value||null;toast('עודכן')});
 }
@@ -861,12 +879,13 @@ function viewClients(){
       const mails=isC?[]:[...new Set(list.filter(r=>!r.do_not_contact&&r.stage!=='לא לפנות').map(r=>(r.email||'').split(/[;, ]+/).find(e=>e.includes('@'))).filter(Boolean))];
       const hot=isC?0:list.filter(r=>['בשיחה','חם','ענו בעבר'].includes(r.stage)).length;
       const lim=S.cmore[ck]?list.length:150;
-      return `<div class="mgroup"><div class="mg-head" data-ck="${esc(ck)}" data-cl="${cl2?1:0}"><span class="caret">${cl2?'◀':'▼'}</span>${esc(g)}<span class="mg-count">${list.length}${hot?` · ${hot} חמים`:''}</span>${mails.length?`<button class="more cpy" data-copy="${esc(ck)}">העתק ${mails.length} מיילים</button>`:''}</div>
+      return `<div class="mgroup"><div class="mg-head" data-ck="${esc(ck)}" data-cl="${cl2?1:0}"><span class="caret">${cl2?'◀':'▼'}</span>${esc(g)}<span class="mg-count">${list.length}${hot?` · ${hot} חמים`:''}</span>${mails.length?`<button class="more cpy" data-copy="${esc(ck)}">העתק ${mails.length} מיילים</button><button class="more cpy" data-enroll="${esc(g)}">לרצף</button>`:''}</div>
       ${mails.length?`<textarea class="hidden" id="m-${esc(ck)}">${esc(mails.join(', '))}</textarea>`:''}${cl2?'':`<div class="mtable-wrap"><table class="mtable ctab"><thead><tr>${cols.map(c=>`<th class="${c[2]}">${c[0]}</th>`).join('')}</tr></thead><tbody>${list.slice(0,lim).map(r=>`<tr data-cid="${r.id}">${cols.map(c=>`<td class="${c[2]}">${c[1](r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${list.length>lim?`<button class="more" data-more="${esc(ck)}">הצג את כל ${list.length}</button>`:''}`}</div>`}).join(''):'<div class="empty">לא נמצאו תוצאות</div>';
     box.querySelectorAll('[data-cid]').forEach(el=>el.onclick=e=>{if(e.target.closest('select,a'))return;openRecord(CONT,el.dataset.cid)});
     box.querySelectorAll('.mg-head').forEach(h=>h.onclick=e=>{if(e.target.closest('.cpy'))return;S.collapsed[h.dataset.ck]=h.dataset.cl!=='1';draw()});
     box.querySelectorAll('.cpy').forEach(b=>b.onclick=async e=>{e.stopPropagation();const t=document.getElementById('m-'+b.dataset.copy).value;try{await navigator.clipboard.writeText(t);toast('הועתקו '+t.split(', ').length+' מיילים')}catch(_){toast('לא הצלחתי להעתיק')}});
     box.querySelectorAll('[data-more]').forEach(b=>b.onclick=()=>{S.cmore[b.dataset.more]=1;draw()});
+    box.querySelectorAll('[data-enroll]').forEach(b=>b.onclick=e=>{e.stopPropagation();enrollGroup(by[b.dataset.enroll]||[])});
     box.querySelectorAll('.isel').forEach(s=>{s.onclick=e=>e.stopPropagation();s.onchange=async()=>{
       const {data,error}=await sb.from('contacts').update({stage:s.value||null}).eq('id',s.dataset.iid).select().single();
       if(error)return toast('שגיאה: '+error.message);Object.assign(S.contacts.find(x=>x.id===data.id),data);toast('עודכן');draw()}});
@@ -945,6 +964,147 @@ function openRecord(C,id,preset){
     closeModal();toast('נשמר');render();
   };
   if($('#rDel'))$('#rDel').onclick=async()=>{if(!confirm('למחוק?'))return;const {error}=await sb.from(C.table).delete().eq('id',id);if(error)return toast('שגיאה: '+error.message);S[C.key]=S[C.key].filter(x=>x.id!==id);closeModal();render();toast('נמחק')};
+}
+
+
+/* ---------- TREATMENTS (therapists) ---------- */
+const myStaff=()=>S.staff.find(s=>s.profile_id===S.me.id)||S.myStaff||null;
+const staffName=id=>S.staff.find(s=>s.id===id)?.full_name||(S.myStaff&&S.myStaff.id===id?S.myStaff.full_name:'—');
+const eur=n=>'€'+(Math.round((Number(n)||0)*100)/100).toLocaleString('en-US');
+S.trWho='';S.trMonth='';
+function viewTreat(){
+  const mgr=isMgr();
+  const all=(S.treatments||[]).slice().sort((a,b)=>(b.treatment_date||'').localeCompare(a.treatment_date||''));
+  const months=[...new Set(all.map(t=>(t.treatment_date||'').slice(0,7)).filter(Boolean))];
+  const rows=all.filter(t=>(!S.trWho||t.staff_id===S.trWho)&&(!S.trMonth||(t.treatment_date||'').startsWith(S.trMonth)));
+  const tips=rows.reduce((s,t)=>s+(Number(t.tip_eur)||0),0);
+  header(mgr?'טיפולים':'הטיפולים שלי',`${rows.length} טיפולים · טיפים ${eur(tips)}`,'<button class="btn" id="newTr">+ טיפול</button>');
+  const f=document.createElement('div');f.className='filters';
+  const who=[...new Set(all.map(t=>t.staff_id).filter(Boolean))];
+  const mLbl=m=>new Date(m+'-01').toLocaleDateString('he-IL',{month:'long',year:'numeric'});
+  f.innerHTML=`${mgr?`<select id="trWho"><option value="">כל המטפלים</option>${who.map(id=>`<option value="${id}" ${S.trWho===id?'selected':''}>${esc(staffName(id))}</option>`).join('')}</select>`:''}<select id="trMonth"><option value="">כל החודשים</option>${months.map(m=>`<option value="${m}" ${S.trMonth===m?'selected':''}>${mLbl(m)}</option>`).join('')}</select>`;
+  $('#main').appendChild(f);
+  const box=document.createElement('div');$('#main').appendChild(box);
+  if(!mgr&&!myStaff()){box.innerHTML='<div class="panel empty">המשתמש שלך עוד לא מקושר לכרטיס בכוח אדם. המנכ״ל יקשר אותו בעמוד ״צוות והרשאות״.</div>';return}
+  const by={};rows.forEach(t=>{const k=(t.treatment_date||'').slice(0,7)||'ללא תאריך';(by[k]=by[k]||[]).push(t)});
+  box.innerHTML=Object.keys(by).map(k=>{const L=by[k],tp=L.reduce((s,t)=>s+(Number(t.tip_eur)||0),0);
+    return `<div class="mgroup"><div class="mg-head" style="color:#5B6B4E">${k==='ללא תאריך'?k:mLbl(k)}<span class="mg-count">${L.length} טיפולים · טיפים ${eur(tp)}</span></div><div class="mtable-wrap"><table class="mtable"><thead><tr><th>תאריך</th>${mgr?'<th>מטפל/ת</th>':''}<th>לקוח / יאכטה</th><th>מיקום</th><th>טיפול</th><th>טיפ</th></tr></thead><tbody>${L.map(t=>`<tr data-trid="${t.id}"><td>${fmtShort(t.treatment_date)}</td>${mgr?`<td><b>${esc(staffName(t.staff_id))}</b></td>`:''}<td>${esc(t.client||'')}</td><td>${esc(t.location||'')}</td><td>${esc([t.service,t.duration_min?t.duration_min+' דק׳':''].filter(Boolean).join(' · '))}</td><td>${t.tip_eur?eur(t.tip_eur):''}</td></tr>`).join('')}</tbody></table></div></div>`}).join('')||'<div class="panel empty">עוד לא נרשמו טיפולים</div>';
+  box.querySelectorAll('[data-trid]').forEach(r=>r.onclick=()=>openTreat(r.dataset.trid));
+  if(f.querySelector('#trWho'))f.querySelector('#trWho').onchange=e=>{S.trWho=e.target.value;render()};
+  f.querySelector('#trMonth').onchange=e=>{S.trMonth=e.target.value;render()};
+  $('#newTr').onclick=()=>openTreat(null);
+}
+function openTreat(id){
+  const mgr=isMgr(),mine=myStaff();
+  if(!mgr&&!mine)return toast('המשתמש לא מקושר לכרטיס מטפל');
+  const t=id?S.treatments.find(x=>x.id===id):{treatment_date:new Date().toISOString().slice(0,10),staff_id:mine?mine.id:''};
+  const team=S.staff.filter(s=>s.stage==='צוות Bayz'||s.stage==='מאגר מאושר'||s.id===t.staff_id).sort((a,b)=>a.full_name.localeCompare(b.full_name));
+  const m=$('#modal');
+  m.innerHTML=`<h2>${id?'עריכת טיפול':'טיפול חדש'}</h2><div class="row2">
+   ${mgr?`<div class="field" style="grid-column:1/-1"><label>מטפל/ת</label><select id="trS"><option value=""></option>${team.map(s=>`<option value="${s.id}" ${t.staff_id===s.id?'selected':''}>${esc(s.full_name)}</option>`).join('')}</select></div>`:''}
+   <div class="field"><label>תאריך</label><input type="date" id="trD" value="${esc(t.treatment_date||'')}"></div>
+   <div class="field"><label>לקוח / יאכטה</label><input id="trC" value="${esc(t.client||'')}"></div>
+   <div class="field"><label>מיקום</label><input id="trL" value="${esc(t.location||'')}"></div>
+   <div class="field"><label>סוג טיפול</label><input id="trSv" value="${esc(t.service||'')}" placeholder="למשל: עיסוי שוודי"></div>
+   <div class="field"><label>משך (דקות)</label><input id="trM" inputmode="numeric" value="${esc(t.duration_min??'')}"></div>
+   <div class="field"><label>טיפ (€)</label><input id="trT" inputmode="decimal" value="${esc(t.tip_eur??'')}"></div>
+   <div class="field" style="grid-column:1/-1"><label>הערות</label><textarea id="trN">${esc(t.notes||'')}</textarea></div></div>
+   <div class="actions"><div style="display:flex;gap:8px"><button class="btn" id="trSave">שמירה</button><button class="btn ghost" id="trCancel">ביטול</button></div>${id&&(isCeo()||t.created_by===S.me.id)?'<button class="btn small danger" id="trDel">מחיקה</button>':''}</div>`;
+  $('#overlay').classList.remove('hidden');$('#trCancel').onclick=closeModal;
+  $('#trSave').onclick=async()=>{
+    const num=v=>{v=String(v||'').replace(/[^\d.]/g,'');return v?Number(v):null};
+    const sid=mgr?($('#trS').value||null):mine.id;
+    if(!sid)return toast('צריך לבחור מטפל/ת');
+    const st=S.staff.find(s=>s.id===sid)||mine;
+    const row={staff_id:sid,profile_id:mgr?(st&&st.profile_id)||null:S.me.id,treatment_date:$('#trD').value||null,client:$('#trC').value.trim()||null,location:$('#trL').value.trim()||null,service:$('#trSv').value.trim()||null,duration_min:num($('#trM').value),tip_eur:num($('#trT').value),notes:$('#trN').value.trim()||null};
+    const res=id?await sb.from('treatments').update(row).eq('id',id).select().single():await sb.from('treatments').insert(row).select().single();
+    if(res.error)return toast('שגיאה: '+res.error.message);
+    const i=S.treatments.findIndex(x=>x.id===res.data.id);if(i>=0)S.treatments[i]=res.data;else S.treatments.push(res.data);
+    closeModal();toast('נשמר');render();
+  };
+  if($('#trDel'))$('#trDel').onclick=async()=>{if(!confirm('למחוק את הטיפול?'))return;const {error}=await sb.from('treatments').delete().eq('id',id);if(error)return toast('שגיאה: '+error.message);S.treatments=S.treatments.filter(x=>x.id!==id);closeModal();render();toast('נמחק')};
+}
+
+/* ---------- CAMPAIGNS (email sequences) ---------- */
+const firstEmail=c=>(c.email||'').split(/[;, ]+/).find(e=>e.includes('@'))||'';
+const firstName=c=>{const n=(c.name||'').split(/[—\-(|]/)[0].trim();const w=n.split(/\s+/)[0]||'';return /^[A-Za-zÀ-ɏͰ-Ͽ]{2,}$/.test(w)&&!/yacht|charter|travel|villa|group/i.test(w)?w:'there'};
+const fillT=(s,c,subj)=>String(s||'').replace(/\{first_name\}/g,firstName(c)).replace(/\{company\}/g,c.company||c.name||'your company').replace(/\{subject\}/g,subj||'');
+const todayIso=()=>new Date().toISOString().slice(0,10);
+const addDays=(iso,n)=>{const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)};
+function gmailUrl(seq,to,su,body){return `https://mail.google.com/mail/?authuser=${encodeURIComponent(seq.sender||'info@bayzspa.com')}&view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`}
+S.campTab='queue';
+function viewCampaigns(){
+  const seqs=S.sequences||[],en=S.enrollments||[];
+  const cById=id=>S.contacts.find(c=>c.id===id);
+  const due=en.filter(e=>e.status==='active'&&(e.next_due||'')<=todayIso()&&seqs.find(s=>s.id===e.sequence_id)?.active);
+  header('קמפיינים',`רצפי מיילים ללידים, לפי סוג · ${en.filter(e=>e.status==='active').length} לידים ברצפים פעילים`);
+  seg([['queue',`לשליחה היום · ${due.length}`],['seqs',`רצפים · ${seqs.length}`]],S.campTab,k=>{S.campTab=k;render()});
+  const box=document.createElement('div');$('#main').appendChild(box);
+  if(S.campTab==='queue'){
+    const draft=seqs.filter(s=>!s.active);
+    box.innerHTML=(draft.length?`<div class="panel note-panel">${draft.length} רצפים עדיין בטיוטה ולא נשלחים. כדי להפעיל רצף, היכנס ללשונית ״רצפים״, עבור על הנוסח ולחץ ״הפעלה״.</div>`:'')+
+    (due.length?`<div class="mtable-wrap"><table class="mtable"><thead><tr><th>ליד</th><th>רצף</th><th>שלב</th><th>אימייל</th><th></th></tr></thead><tbody>${due.map(e=>{const c=cById(e.contact_id),s=seqs.find(x=>x.id===e.sequence_id);if(!c)return '';return `<tr><td><b>${esc(c.name)}</b><small class="nm-sub">${esc(c.company||'')}</small></td><td>${esc(s.name)}</td><td>מייל ${e.step+1} מתוך ${s.steps.length}</td><td dir="ltr">${esc(firstEmail(c))}</td><td style="white-space:nowrap"><button class="btn small" data-send="${e.id}">פתח בג׳ימייל</button> <button class="btn small ghost" data-sent="${e.id}">נשלח ✓</button> <button class="btn small ghost" data-reply="${e.id}">ענו</button> <button class="btn small ghost" data-stop="${e.id}">עצור</button></td></tr>`}).join('')}</tbody></table></div>`:'<div class="panel empty">אין מיילים לשליחה היום</div>');
+    const E=id=>en.find(x=>x.id===id);
+    const upd=async(e,patch)=>{const {data,error}=await sb.from('enrollments').update(patch).eq('id',e.id).select().single();if(error){toast('שגיאה: '+error.message);return null}Object.assign(e,data);return data};
+    const upC=async(c,patch)=>{const {data,error}=await sb.from('contacts').update(patch).eq('id',c.id).select().single();if(!error)Object.assign(c,data)};
+    box.querySelectorAll('[data-send]').forEach(b=>b.onclick=()=>{const e=E(b.dataset.send),c=cById(e.contact_id),s=seqs.find(x=>x.id===e.sequence_id),st=s.steps[e.step],s0=s.steps[0];
+      window.open(gmailUrl(s,firstEmail(c),fillT(st.subject,c,fillT(s0.subject,c)),fillT(st.body,c)),'_blank','noopener')});
+    box.querySelectorAll('[data-sent]').forEach(b=>b.onclick=async()=>{const e=E(b.dataset.sent),c=cById(e.contact_id),s=seqs.find(x=>x.id===e.sequence_id);
+      const nxt=e.step+1,done=nxt>=s.steps.length,hist=[...(e.history||[]),{step:e.step,sent:todayIso()}];
+      if(!await upd(e,{step:done?e.step:nxt,status:done?'done':'active',next_due:done?null:addDays(todayIso(),(s.steps[nxt].day||0)-(s.steps[e.step].day||0)),history:hist}))return;
+      await upC(c,{last_contact:todayIso(),stage:['חדש','קר'].includes(c.stage)||!c.stage?'פנייה נשלחה':c.stage});toast('סומן כנשלח');render()});
+    box.querySelectorAll('[data-reply]').forEach(b=>b.onclick=async()=>{const e=E(b.dataset.reply),c=cById(e.contact_id);if(!await upd(e,{status:'replied'}))return;await upC(c,{stage:'בשיחה',last_contact:todayIso()});toast('הליד עבר לשלב ״בשיחה״');render()});
+    box.querySelectorAll('[data-stop]').forEach(b=>b.onclick=async()=>{const e=E(b.dataset.stop);if(!await upd(e,{status:'stopped'}))return;toast('הרצף נעצר לליד');render()});
+  } else {
+    box.innerHTML=seqs.map(s=>{const L=en.filter(e=>e.sequence_id===s.id),act=L.filter(e=>e.status==='active').length,rep=L.filter(e=>e.status==='replied').length;
+      return `<div class="panel seq"><div class="seq-h"><div><h2>${esc(s.name)} ${s.active?'<span class="chip st-done">פעיל</span>':'<span class="chip">טיוטה</span>'}</h2><div class="sub">${esc((s.segments||[]).join(' · '))} · ${s.steps.length} מיילים · נשלח מ-<span dir="ltr">${esc(s.sender||'')}</span></div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small ghost" data-edit="${s.id}">עריכת הנוסח</button><button class="btn small ${s.active?'ghost':''}" data-tog="${s.id}">${s.active?'השהיה':'הפעלה'}</button></div></div>
+      <div class="seq-stats"><span><b>${act}</b> ברצף</span><span><b>${rep}</b> ענו</span><span><b>${L.filter(e=>e.status==='done').length}</b> סיימו</span></div>
+      <ol class="seq-steps">${s.steps.map((st,i)=>`<li><b>יום ${st.day||0}</b> · <span dir="ltr">${esc(fillT(st.subject,{name:'',company:'{company}'},s.steps[0].subject))}</span></li>`).join('')}</ol></div>`}).join('')+'<div class="sub" style="margin-top:8px">כדי להוסיף לידים לרצף: בעמוד ״לקוחות ולידים״ ← לשונית לידים ← כפתור ״לרצף״ בכותרת של כל סוג.</div>';
+    box.querySelectorAll('[data-tog]').forEach(b=>b.onclick=async()=>{const s=seqs.find(x=>x.id===b.dataset.tog);const {data,error}=await sb.from('sequences').update({active:!s.active}).eq('id',s.id).select().single();if(error)return toast('שגיאה: '+error.message);Object.assign(s,data);toast(s.active?'הרצף פעיל':'הרצף הושהה');render()});
+    box.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>editSeq(b.dataset.edit));
+  }
+}
+function editSeq(id){
+  const s=S.sequences.find(x=>x.id===id),m=$('#modal');
+  m.innerHTML=`<h2>${esc(s.name)}</h2><div class="sub" style="margin-bottom:10px">אפשר להשתמש ב-{first_name} ו-{company}. בשורת הנושא של מייל המשך, {subject} הוא הנושא של המייל הראשון.</div>
+  <div class="field"><label>נשלח מ</label><input id="sqFrom" dir="ltr" value="${esc(s.sender||'')}"></div>
+  ${s.steps.map((st,i)=>`<div class="panel" style="margin:10px 0;padding:12px"><div class="row2"><div class="field"><label>מייל ${i+1} · יום</label><input data-sd="${i}" inputmode="numeric" value="${st.day||0}"></div><div class="field"><label>נושא</label><input data-ss="${i}" dir="ltr" value="${esc(st.subject)}"></div><div class="field" style="grid-column:1/-1"><label>תוכן</label><textarea data-sb="${i}" dir="ltr" style="min-height:170px">${esc(st.body)}</textarea></div></div></div>`).join('')}
+  <div class="actions"><div style="display:flex;gap:8px"><button class="btn" id="sqSave">שמירה</button><button class="btn ghost" id="sqCancel">ביטול</button></div></div>`;
+  $('#overlay').classList.remove('hidden');$('#sqCancel').onclick=closeModal;
+  $('#sqSave').onclick=async()=>{const steps=s.steps.map((st,i)=>({day:Number(m.querySelector(`[data-sd="${i}"]`).value)||0,subject:m.querySelector(`[data-ss="${i}"]`).value,body:m.querySelector(`[data-sb="${i}"]`).value}));
+    const {data,error}=await sb.from('sequences').update({steps,sender:$('#sqFrom').value.trim()||'info@bayzspa.com'}).eq('id',id).select().single();if(error)return toast('שגיאה: '+error.message);Object.assign(s,data);closeModal();toast('נשמר');render()};
+}
+async function enrollGroup(list){
+  const seqs=S.sequences||[];if(!seqs.length)return toast('אין רצפים');
+  const seg0=list[0]&&list[0].segment;const sug=seqs.find(s=>(s.segments||[]).includes(seg0));
+  const ok=list.filter(c=>!c.do_not_contact&&c.stage!=='לא לפנות'&&firstEmail(c));
+  const m=$('#modal');
+  m.innerHTML=`<h2>הוספה לרצף מיילים</h2><div class="sub" style="margin-bottom:12px">${ok.length} לידים עם אימייל בקבוצה הזו (בלי מי שסומן ״לא לפנות״).</div>
+  <div class="field"><label>רצף</label><select id="enS">${seqs.map(s=>`<option value="${s.id}" ${sug&&sug.id===s.id?'selected':''}>${esc(s.name)}${s.active?'':' (טיוטה)'}</option>`).join('')}</select></div>
+  <div class="field"><label>מי נכנס</label><select id="enW"><option value="new">רק בשלב ״חדש״ או ״קר״</option><option value="all">כל הלידים בקבוצה</option></select></div>
+  <div class="field"><label>כמה לשלוח ביום</label><input id="enN" inputmode="numeric" value="20"></div>
+  <div class="actions"><div style="display:flex;gap:8px"><button class="btn" id="enGo">הוספה</button><button class="btn ghost" id="enCancel">ביטול</button></div></div>`;
+  $('#overlay').classList.remove('hidden');$('#enCancel').onclick=closeModal;
+  $('#enGo').onclick=async()=>{const sid=$('#enS').value,w=$('#enW').value,per=Math.max(1,Number($('#enN').value)||20);
+    const have=new Set((S.enrollments||[]).filter(e=>e.sequence_id===sid).map(e=>e.contact_id));
+    const pick=ok.filter(c=>!have.has(c.id)&&(w==='all'||!c.stage||['חדש','קר'].includes(c.stage)));
+    if(!pick.length)return toast('אין לידים חדשים להוספה');
+    const rows=pick.map((c,i)=>({contact_id:c.id,sequence_id:sid,step:0,status:'active',next_due:addDays(todayIso(),Math.floor(i/per))}));
+    const {data,error}=await sb.from('enrollments').insert(rows).select();if(error)return toast('שגיאה: '+error.message);
+    S.enrollments=(S.enrollments||[]).concat(data);closeModal();toast(`נוספו ${data.length} לידים לרצף`);};
+}
+
+/* ---------- ARCHIVE (from monday) ---------- */
+function mdLite(s){return esc(s).replace(/^### (.*)$/gm,'<h4>$1</h4>').replace(/^## (.*)$/gm,'<h3>$1</h3>').replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/^&gt; ?(.*)$/gm,'<blockquote dir="auto">$1</blockquote>').replace(/^- (.*)$/gm,'<li>$1</li>').replace(/^\d+\. (.*)$/gm,'<li>$1</li>').replace(/^---$/gm,'<hr>').replace(/^\|(.+)\|$/gm,(x,r)=>/^[\s\-|]+$/.test(r)?'':'<div class="mdrow">'+r.split('|').map(c=>`<span>${c.trim()}</span>`).join('')+'</div>').replace(/\n*(<\/?(?:h3|h4|li|blockquote|hr|div)[^>]*>)\n*/g,'$1').replace(/\n{2,}/g,'<br><br>').replace(/\n/g,' ')}
+function viewArchive(){
+  const A=S.archive||[];
+  header('ארכיון','מה שהועבר מ-monday ואין לו מקום קבוע במערכת');
+  const by={};A.forEach(a=>(by[a.board]=by[a.board]||[]).push(a));
+  const box=document.createElement('div');$('#main').appendChild(box);
+  box.innerHTML=Object.keys(by).map(b=>`<div class="mgroup"><div class="mg-head" style="color:#5B6B4E">${esc(b)}<span class="mg-count">${by[b].length}</span></div><div class="mtable-wrap"><table class="mtable"><tbody>${by[b].map(a=>`<tr data-aid="${a.id}"><td><b>${esc(a.name)}</b></td><td class="w-wide">${esc(Object.entries(a.fields||{}).slice(0,3).map(([k,v])=>k+': '+String(v).split('\n')[0]).join(' · ')).slice(0,160)}</td></tr>`).join('')}</tbody></table></div></div>`).join('')||'<div class="panel empty">הארכיון ריק</div>';
+  box.querySelectorAll('[data-aid]').forEach(r=>r.onclick=()=>{const a=A.find(x=>x.id===r.dataset.aid),m=$('#modal');
+    m.innerHTML=`<h2>${esc(a.name)}</h2><div class="sub" style="margin-bottom:10px">${esc(a.board)}</div>${Object.entries(a.fields||{}).map(([k,v])=>`<div class="field"><label>${esc(k)}</label><div class="ro">${esc(v).replace(/\n/g,'<br>')}</div></div>`).join('')}${(a.files||[]).length?`<div class="field"><label>קבצים במאנדיי</label><div class="ro">${a.files.map(esc).join('<br>')}</div></div>`:''}${a.body?`<div class="md">${mdLite(a.body)}</div>`:''}<div class="actions"><button class="btn ghost" id="aClose">סגירה</button></div>`;
+    $('#overlay').classList.remove('hidden');$('#aClose').onclick=closeModal});
 }
 
 sb.auth.onAuthStateChange((ev)=>{if(ev==='SIGNED_OUT')show('auth')});
